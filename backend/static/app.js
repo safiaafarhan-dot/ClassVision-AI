@@ -2357,23 +2357,32 @@ function canGoBack() {
   return !!(openDetailPanel() || state.viewStack.length);
 }
 
+/* The name of a view, taken from its own rail item. One table of names, the
+   one already on screen - a second one could disagree with it. */
+function viewLabel(view) {
+  const tab = document.querySelector('.tab[data-view="' + view + '"]');
+  return tab ? tab.textContent.trim() : "";
+}
+
 function renderBack() {
   const button = $("topbar-back");
   if (!button) return;
 
-  const detail = openDetailPanel();
   button.hidden = !canGoBack();
+  if (button.hidden) return;
 
-  /* The label says where it goes, because "Back" on its own is a guess. */
+  /* The label says WHERE IT GOES, because "Back" on its own is a guess and
+     the whole point of this control is that nobody has to guess. */
+  const detail = openDetailPanel();
+  const previous = state.viewStack[state.viewStack.length - 1];
+  const where = detail ? "" : viewLabel(previous);
+
   const label = button.querySelector(".topbar-back-label");
-  if (label) {
-    label.textContent = detail
-      ? "Back"
-      : (state.viewStack.length ? "Back" : "Back");
-  }
+  if (label) label.textContent = where ? "Back to " + where : "Back";
+
   button.title = detail
     ? "Close this and stay on the page (Alt+Left)"
-    : "Back (Alt+Left)";
+    : (where ? "Back to " + where + " (Alt+Left)" : "Back (Alt+Left)");
 }
 
 /*
@@ -2415,6 +2424,14 @@ function closeDetailPanel(id) {
     returnToList("students-table");
   } else if (id === "live-summary") {
     returnToList("live-strip");
+  } else if (id === "assembly-summary") {
+    /* The hall comes back. Assembly Mode owns the summary, so closing it is
+       told to the module rather than done to its DOM from here - which is the
+       same direction every other call between these two files runs in. */
+    if (window.Assembly && window.Assembly.closeSummary) {
+      window.Assembly.closeSummary();
+    }
+    returnToList("assembly-rows");
   }
 }
 
@@ -7091,6 +7108,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("close-session").addEventListener("click", goBack);
   $("close-student").addEventListener("click", goBack);
   $("close-live-summary").addEventListener("click", goBack);
+  $("close-assembly-summary").addEventListener("click", goBack);
 
   $("att-status").addEventListener("change", (event) => {
     state.attendanceStatus = event.target.value;
@@ -7396,6 +7414,9 @@ async function startDashboard() {
      of the stage was an empty shell. This is the one call switchView() cannot
      make, because the first view was never switched to. */
   if (window.Spatial) window.Spatial.view(state.view);
+
+  /* Nowhere to go back to yet, and the control says so by not being there. */
+  renderBack();
 }
 
 
