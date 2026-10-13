@@ -3449,6 +3449,101 @@ h3 { letter-spacing: -.006em; }
   no glass, no shadow, no illumination, no chrome - and the tables stop
   scrolling, because paper has no scrollbar.
 */
+/* =========================================================================
+   BACK
+   -------------------------------------------------------------------------
+   One control in the top bar, beside the view's name, where a back control
+   belongs: to the left of where you are.
+
+   It is HIDDEN rather than disabled when there is nowhere to go - see
+   renderBack - so these rules never have to describe a dead button.
+   ========================================================================= */
+
+.topbar-back {
+  flex: 0 0 auto;
+  gap: .4rem;
+  padding-inline: .6rem .75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  /* The label can be long ("Back to Live classroom"); the arrow may never
+     wrap away from it, and a long view name is clipped rather than pushing
+     the account controls off the bar. */
+  max-width: 15rem;
+  overflow: hidden;
+}
+.topbar-back-label {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* On a phone the top bar is already carrying a hamburger, a title and a live
+   flag. The arrow is unambiguous on its own there. */
+@media (max-width: 720px) {
+  .topbar-back { max-width: none; padding-inline: .55rem; }
+  .topbar-back-label { display: none; }
+}
+
+/* =========================================================================
+   A SORTABLE COLUMN HEADER
+   -------------------------------------------------------------------------
+   A real button inside the <th>, so the column is reachable by keyboard and
+   announced as a control; the order itself is carried by aria-sort on the
+   header, which is what a screen reader reads.
+   ========================================================================= */
+
+.th-sort {
+  display: inline-flex; align-items: center; gap: .3rem;
+  padding: 0; border: 0; background: none;
+  font: inherit; color: inherit; letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+.th-sort:hover { color: var(--accent); }
+.th-sort[data-active="true"] { color: var(--accent); }
+
+/* The arrow, after the label, and only on the sorted column. A caret on every
+   header is noise; a caret on one of them is information. */
+.th-sort[data-active="true"]::after {
+  content: "\2191";
+  font-size: .8em;
+}
+.th-sort[data-active="true"][data-direction="desc"]::after { content: "\2193"; }
+
+/* =========================================================================
+   A LIVE STATE, AS A PILL
+   -------------------------------------------------------------------------
+   The same shape as .pill and deliberately NOT the same vocabulary: these say
+   "Present now" and "Not seen yet", because a live reading is not an
+   attendance decision. Keyed off data-state so one palette serves the pill,
+   the seat and the constellation orb.
+   ========================================================================= */
+
+.live-pill {
+  display: inline-flex; align-items: center; gap: .32rem;
+  padding: .1rem .48rem; border-radius: var(--radius-pill);
+  font-size: .745rem; font-weight: 700; white-space: nowrap;
+  border: 1px solid transparent;
+  font-family: var(--font-mono); letter-spacing: .02em;
+  color: var(--unknown); background: var(--unknown-bg);
+  border-color: var(--unknown);
+}
+.live-pill .sym { font-weight: 800; }
+.live-pill[data-state="present"] {
+  color: var(--present); background: var(--present-bg);
+  border-color: var(--present);
+}
+.live-pill[data-state="late"] {
+  color: var(--late); background: var(--late-bg); border-color: var(--late);
+}
+.live-pill[data-state="uncertain"] {
+  color: var(--partial); background: var(--partial-bg);
+  border-color: var(--partial);
+}
+.live-pill[data-state="absent"] {
+  color: var(--absent); background: var(--absent-bg);
+  border-color: var(--absent);
+}
+
+
 @media print {
   body {
     background: #fff; color: #000;
