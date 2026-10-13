@@ -61,6 +61,16 @@ const PAGE_SIZE = 25;
 
 const state = {
   view: "overview",
+
+  /* WHERE SOMEBODY HAS BEEN, and how to undo it.
+
+     `viewStack` holds the views that were left to get to this one, most
+     recent last, and Back pops it. `navSeq` counts how many history entries
+     this application has pushed, so the browser's own Back button and the one
+     in the top bar operate on the same stack instead of disagreeing - see
+     pushNavStep and goBack. */
+  viewStack: [],
+  navSeq: 0,
   classId: "",
   date: "",
   sessionOffset: 0,
@@ -646,42 +656,6 @@ function renderTodaySessions(today) {
       openSession(button.getAttribute("data-today-session"));
     });
   });
-}
-
-/* Quick actions.
-
-   Each one calls the SAME function its own page's button calls, so there is
-   one code path per action rather than two that drift. Nothing here is a
-   permission: the buttons an account may not use are hidden by
-   renderQuickActions and refused by the server regardless. */
-function renderQuickActions() {
-  const admin = state.auth.is_super_admin;
-
-  /* Adding a teacher is Super Admin only, and the server says so too - see
-     require_super_admin on /api/users. */
-  $("quick-add-teacher").hidden = !(state.auth.configured && admin);
-}
-
-function bindQuickActions() {
-  $("quick-add-student").addEventListener("click", () => {
-    switchView("students");
-    openStudentDialog();
-  });
-
-  $("quick-add-teacher").addEventListener("click", () => {
-    switchView("admin");
-    openUserDialog(null);
-  });
-
-  $("quick-create-session").addEventListener("click", () => {
-    switchView("sessions");
-    openSessionDialog();
-  });
-
-  $("quick-start-live").addEventListener("click", () => switchView("live"));
-
-  $("quick-view-reports").addEventListener("click", () =>
-    switchView("reports"));
 }
 
 /* =========================================================================
@@ -1310,7 +1284,6 @@ async function loadOverview() {
     ])));
 
   await loadAttention();
-  await loadRecentSessions();
 }
 
 async function loadAttention() {
@@ -1357,34 +1330,6 @@ async function loadAttention() {
   });
 }
 
-async function loadRecentSessions() {
-  const query = new URLSearchParams({ limit: "5", offset: "0" });
-  if (state.classId) query.set("class_id", state.classId);
-  if (state.date) query.set("session_date", state.date);
-
-  const data = await api("/api/sessions?" + query.toString());
-  const body = $("recent-sessions").querySelector("tbody");
-
-  body.replaceChildren(...data.items.map((session) =>
-    el("tr", {}, [
-      el("td", { text: session.session_date }),
-      el("td", { text: session.class_id }),
-      el("td", {}, [statusPill(session.status)]),
-      el("td", { class: "num", text: String(session.expected_students ?? "—") }),
-      el("td", { text: session.policy_version }),
-      el("td", {}, [el("button", {
-        class: "btn-link", type: "button", "data-session": session.session_id, text: "Open"
-      })])
-    ])));
-
-  body.querySelectorAll("[data-session]").forEach((button) => {
-    button.addEventListener("click", () => {
-      switchView("sessions");
-      openSession(button.getAttribute("data-session"));
-    });
-  });
-}
-
 /* ---------- sessions ---------- */
 
 /* =========================================================================
@@ -1422,6 +1367,13 @@ async function loadClassList() {
   $("classes-empty").hidden = classes.length > 0;
   $("classes-wrap").hidden = classes.length === 0;
 
+  const count = $("classes-count");
+  if (count) {
+    count.textContent = classes.length
+      ? classes.length + (classes.length === 1 ? " class" : " classes")
+      : "";
+  }
+
   const body = $("classes-table").querySelector("tbody");
   body.replaceChildren(...classes.map((item) => {
     const open = el("button", { class: "btn-link", type: "button",
@@ -1452,7 +1404,10 @@ function openClassSessions(classId) {
   state.classId = classId;
   state.sessionOffset = 0;
   $("filter-class").value = classId;
-  refresh();
+  /* Classes is its own view now, so "Open" has somewhere to go: the session
+     register, narrowed to this class by the filter that already existed.
+     switchView refreshes, so this does not ask twice. */
+  switchView("sessions");
 }
 
 /*
@@ -1617,6 +1572,10 @@ async function openSession(sessionId) {
     api("/api/analytics/sessions/" + encodeURIComponent(sessionId))
   ]);
 
+  /* Pushed before the panel is shown, so the step exists by the time Back
+     is rendered - and pushed here rather than at each call site, so every
+     route into a session pushes exactly one. */
+  if ($("session-detail").hidden) pushDetailStep();
   $("session-detail").hidden = false;
   $("session-detail-heading").textContent = session.class_id + " — " + session.session_date;
 
@@ -2146,6 +2105,7 @@ async function openStudent(studentId) {
     api("/api/students/" + encodeURIComponent(studentId))
   ]);
 
+  if ($("student-detail").hidden) pushDetailStep();
   $("student-detail").hidden = false;
   $("student-detail-heading").textContent = analytics.name + " (" + analytics.student_id + ")";
 
@@ -2216,7 +2176,53 @@ recorded" rather than being quietly omitted. */
 
 /* ---------- view switching ---------- */
 
-function switchView(view) {
+/*
+   EVERY VIEW, AND EXACTLY ONE OF THEM.
+
+   The list below is the whole application. It grew when Administration was
+   broken up: an account list, a credential list, an alerting rule set, a
+   model registry and a log were five panels on one page, and they share
+   nothing but the permission that opens them. Classes left the session
+   register for the same reason - "what is scheduled" and "what classes exist"
+   were never the same question.
+
+   Keyed by the data-view on the rail item, so adding a destination means
+   adding a button and a line here and nothing else.
+*/
+const VIEWS = ["overview", "live", "assembly", "reports", "students",
+               "sessions", "classes", "assistant", "cameras", "academic",
+               "models", "admin", "logins", "alerts", "audit"];
+
+/* The views only a Super Admin may open. The server refuses every one of
+   these regardless; hiding them is a courtesy, not the permission. */
+const ADMIN_VIEWS = ["academic", "models", "admin", "logins", "alerts",
+                     "audit"];
+
+/*
+   The panels that open INSIDE a view rather than replacing it.
+
+   Opening one is a navigation - it is the thing somebody wants to get back
+   out of - so Back closes the panel before it changes the view. Without this,
+   Back out of a student profile would leave the profile on screen and switch
+   the tab underneath it.
+*/
+const DETAIL_PANELS = {
+  sessions: ["session-detail"],
+  students: ["student-detail"],
+  live: ["live-summary"],
+  assembly: ["assembly-summary"]
+};
+
+function switchView(view, isBack) {
+  if (!VIEWS.includes(view)) return;
+
+  /* The step being left, remembered before anything changes. Not remembered
+     when this IS a back navigation, or the stack would never empty. */
+  if (!isBack && view !== state.view) {
+    state.viewStack.push(state.view);
+    pushNavStep();
+  }
+
   state.view = view;
 
   document.querySelectorAll(".tab").forEach((tab) => {
@@ -2237,6 +2243,7 @@ function switchView(view) {
 
   $("view-overview").hidden = view !== "overview";
   $("view-sessions").hidden = view !== "sessions";
+  $("view-classes").hidden = view !== "classes";
   $("view-students").hidden = view !== "students";
   $("view-live").hidden = view !== "live";
   $("view-assembly").hidden = view !== "assembly";
@@ -2245,6 +2252,20 @@ function switchView(view) {
   $("view-assistant").hidden = view !== "assistant";
   $("view-academic").hidden = view !== "academic";
   $("view-admin").hidden = view !== "admin";
+  $("view-logins").hidden = view !== "logins";
+  $("view-alerts").hidden = view !== "alerts";
+  $("view-models").hidden = view !== "models";
+  $("view-audit").hidden = view !== "audit";
+
+  /* A detail panel belongs to the view it was opened in. Leaving the view
+     closes it, so coming back does not land on somebody else's profile. */
+  Object.keys(DETAIL_PANELS).forEach((owner) => {
+    if (owner === view) return;
+    DETAIL_PANELS[owner].forEach((id) => {
+      const panel = $(id);
+      if (panel) panel.hidden = true;
+    });
+  });
 
   /* The camera keeps running when the teacher looks elsewhere; only the
      polling stops, because nothing is on screen to update. */
@@ -2270,10 +2291,10 @@ function switchView(view) {
   }
 
   /* Generated portal passwords are shown once and are not left on screen for
-     the next person who walks past the machine. Leaving the tab clears them;
+     the next person who walks past the machine. Leaving the view clears them;
      they cannot be read back from the server, which is the whole reason the
      office was told to write them down. */
-  if (view !== "admin") clearIssuedLogins();
+  if (view !== "logins") clearIssuedLogins();
 
   /* The cinematic move: the view being left falls back into the room and the
      one being opened comes forward out of the glass. 420ms, and switched off
@@ -2281,7 +2302,178 @@ function switchView(view) {
      hundred times a day cannot charge them a second each time. */
   if (window.Spatial) window.Spatial.view(view);
 
+  renderBack();
   refresh();
+}
+
+/* ---------- going back ---------- */
+
+/*
+   ONE BACK CONTROL, AND ONE STACK BEHIND IT.
+
+   The complaint this answers is the simplest one a tool can attract: you open
+   something and there is no way out of it. There is now, in one place, on
+   every page, and it undoes the LAST THING THAT HAPPENED rather than guessing
+   at a hierarchy:
+
+     a detail panel is open   ->  close it, stay on the page
+     otherwise                ->  go back to the view you came from
+
+   So opening a student from the dashboard takes two presses to get home,
+   because two things happened. That is the property that makes a back button
+   trustworthy: it is never a shortcut to somewhere you have not been.
+
+   Three controls drive it and they cannot disagree, because all three end up
+   here: the button in the top bar, Alt+Left, and the browser's own Back -
+   which reaches this through popstate over the entries pushNavStep leaves.
+
+   `navSeq` is how many entries this page has pushed. Without it, the forward
+   button would be read as another back and undo a second step.
+*/
+
+function pushNavStep() {
+  state.navSeq += 1;
+  try {
+    window.history.pushState({ cv: state.navSeq }, "");
+  } catch (ignored) {
+    /* A browser that refuses pushState still has a working Back button in the
+       top bar: the in-page stack above is the authority, and this is only how
+       the hardware button reaches it. */
+  }
+}
+
+/* The detail panel currently open in this view, if there is one. */
+function openDetailPanel() {
+  for (const id of (DETAIL_PANELS[state.view] || [])) {
+    const panel = $(id);
+    if (panel && !panel.hidden) return id;
+  }
+  return null;
+}
+
+/* Is there anything to go back to. Drives whether the control is shown at
+   all: a disabled back button is a promise the page cannot keep. */
+function canGoBack() {
+  return !!(openDetailPanel() || state.viewStack.length);
+}
+
+function renderBack() {
+  const button = $("topbar-back");
+  if (!button) return;
+
+  const detail = openDetailPanel();
+  button.hidden = !canGoBack();
+
+  /* The label says where it goes, because "Back" on its own is a guess. */
+  const label = button.querySelector(".topbar-back-label");
+  if (label) {
+    label.textContent = detail
+      ? "Back"
+      : (state.viewStack.length ? "Back" : "Back");
+  }
+  button.title = detail
+    ? "Close this and stay on the page (Alt+Left)"
+    : "Back (Alt+Left)";
+}
+
+/*
+   Undo one step, and nothing else.
+
+   Closing a detail panel returns focus to the list it was opened from -
+   hiding a panel and leaving a keyboard user at the end of the document is
+   how a back control becomes useless to somebody who cannot see the page.
+*/
+function undoOneStep() {
+  const detail = openDetailPanel();
+  if (detail) {
+    closeDetailPanel(detail);
+    renderBack();
+    return true;
+  }
+
+  const previous = state.viewStack.pop();
+  if (previous === undefined) {
+    renderBack();
+    return false;
+  }
+
+  switchView(previous, true);
+  return true;
+}
+
+/* Each detail panel, and what has to be forgotten when it closes. The close
+   buttons inside the panels call this too, so there is one way to shut one. */
+function closeDetailPanel(id) {
+  const panel = $(id);
+  if (!panel) return;
+  panel.hidden = true;
+
+  if (id === "session-detail") {
+    state.session = null;
+    returnToList("sessions-table");
+  } else if (id === "student-detail") {
+    returnToList("students-table");
+  } else if (id === "live-summary") {
+    returnToList("live-strip");
+  }
+}
+
+/*
+   A detail panel was opened: that is a navigation, so it gets a step.
+
+   Called by openSession and openStudent rather than by their callers, so
+   every route into a profile - a table row, the dashboard, a constellation,
+   the assembly summary - pushes exactly one step.
+*/
+function pushDetailStep() {
+  pushNavStep();
+  renderBack();
+}
+
+function goBack() {
+  /* Through the history stack where there is one, so the browser's own Back
+     button and this one stay in step. popstate below does the actual undo. */
+  if (state.navSeq > 0) {
+    window.history.back();
+    return;
+  }
+  undoOneStep();
+}
+
+function bindBackNavigation() {
+  const button = $("topbar-back");
+  if (button) button.addEventListener("click", goBack);
+
+  window.addEventListener("popstate", (event) => {
+    const to = (event.state && typeof event.state.cv === "number")
+      ? event.state.cv : 0;
+
+    if (to < state.navSeq) {
+      /* Back, possibly several entries at once if somebody held the button. */
+      let steps = state.navSeq - to;
+      state.navSeq = to;
+      /* Bounded: a stack that has run out stops rather than spinning. */
+      while (steps > 0 && undoOneStep()) steps -= 1;
+    } else if (to > state.navSeq) {
+      /* Forward. There is nothing to redo - the step it would redo was undone
+         by a real navigation - so the counter is brought back into step and
+         the page is left where it is. */
+      state.navSeq = to;
+    }
+
+    renderBack();
+  });
+
+  /* Alt+Left, which is what the keyboard shortcut for Back is on every
+     platform this runs on. Ignored while a dialog is open, because a dialog's
+     own Escape is the way out of a dialog. */
+  document.addEventListener("keydown", (event) => {
+    if (event.altKey && event.key === "ArrowLeft") {
+      if (document.querySelector("dialog[open]")) return;
+      event.preventDefault();
+      goBack();
+    }
+  });
 }
 
 /* ---------- the navigation rail ---------- */
@@ -2406,12 +2598,11 @@ async function refresh() {
          subsystem that will not answer must not take the overview down. */
       loadSystemStatus().catch(() => {});
     }
-    else if (state.view === "sessions") {
-      await loadSessions();
-      /* Its own concern, its own failure: a class list that will not load must
-         not hide the session register above it. */
-      await loadClassList().catch(() => {});
-    }
+    else if (state.view === "sessions") await loadSessions();
+    /* Classes is a view of its own now, so the class list is loaded by the
+       page it is on rather than alongside a session register that never
+       needed it. */
+    else if (state.view === "classes") await loadClassList();
     else if (state.view === "students") await loadStudents();
     else if (state.view === "live") {
       /* The device list before the status, so the dropdown is populated by the
@@ -2434,30 +2625,33 @@ async function refresh() {
     else if (state.view === "cameras") await loadCameras();
     else if (state.view === "assistant") await loadAssistant();
     else if (state.view === "academic") await loadAcademic();
-    else if (state.view === "admin") await loadAdministration();
+
+    /* Administration was five panels on one page. Each is now a view, and
+       each loads only itself: an alert rule that will not load can no longer
+       take an account list down with it, because they are not on the same
+       page any more. */
+    else if (state.view === "admin") await loadTeachers();
+    else if (state.view === "logins") await loadPortalAccounts();
+    else if (state.view === "alerts") {
+      await loadAlertRules();
+      /* Both are their own concern: how alerts are delivered and what has
+         already been raised are two different questions, and neither failing
+         should hide the rules. */
+      loadAlertDelivery().catch(() => {});
+      loadNotifications().catch(() => {});
+    }
+    else if (state.view === "models") {
+      /* The registry reports its own failure in its own panel rather than
+         silently: which recogniser is in production is exactly the kind of
+         thing somebody must not be left guessing about. */
+      await loadModels().catch((failure) => modelError(failure.message));
+    }
+    else if (state.view === "audit") await loadAudit();
   } catch (failure) {
     banner("Could not load data: " + failure.message, true);
   } finally {
     setBusy(false);
   }
-}
-
-/*
-  The model registry lives on the administration page rather than in a view of
-  its own - that is where the API puts it. This goes there and then moves focus
-  to the panel, so a keyboard user ends up at the thing they asked for instead
-  of at the top of a long page.
-*/
-async function showModelRegistry() {
-  if (state.view !== "admin") switchView("admin");
-  else closeSidebar();
-
-  const heading = $("models-heading");
-  if (!heading) return;
-
-  heading.setAttribute("tabindex", "-1");
-  heading.focus({ preventScroll: true });
-  heading.scrollIntoView({ block: "start", behavior: "auto" });
 }
 
 /*
@@ -5055,15 +5249,35 @@ function initials(name) {
   return (words[0][0] + words[words.length - 1][0]).toUpperCase();
 }
 
+/*
+   WHICH RAIL ITEMS THIS ACCOUNT MAY OPEN.
+
+   One list - ADMIN_VIEWS - drives the tabs, the group heading above them and
+   the redirect in renderAccount, so a destination cannot be hidden in one of
+   the three and left reachable in the others. Every one of these is refused
+   by the server as well; this is tidiness, not a permission.
+
+   The group label is hidden with its items, because a heading over nothing is
+   how a rail ends up with a gap in it.
+*/
+function renderAdminNav() {
+  const allowed = state.auth.configured && state.auth.is_super_admin;
+
+  ADMIN_VIEWS.forEach((view) => {
+    const tab = document.querySelector('.tab[data-view="' + view + '"]');
+    if (tab) tab.hidden = !allowed;
+  });
+
+  const group = $("nav-group-admin-wrap");
+  if (group) group.hidden = !allowed;
+}
+
 function renderAccount() {
   const user = state.auth.user;
   const account = $("account");
 
   account.hidden = !user;
-  $("tab-academic").hidden =
-    !(state.auth.configured && state.auth.is_super_admin);
-  $("tab-admin").hidden = !(state.auth.configured && state.auth.is_super_admin);
-  renderQuickActions();
+  renderAdminNav();
 
   if (!user) {
     $("sidebar-user-name").textContent = "Not signed in";
@@ -5085,8 +5299,7 @@ function renderAccount() {
   $("sidebar-user-avatar").textContent = initials(who);
 
   /* A teacher who lands on a hidden tab would otherwise see an empty page. */
-  if ((state.view === "admin" || state.view === "academic")
-      && !state.auth.is_super_admin) {
+  if (ADMIN_VIEWS.includes(state.view) && !state.auth.is_super_admin) {
     switchView("overview");
   }
 }
@@ -5188,11 +5401,18 @@ function clearFetchedData() {
                         + "#timeline, #student-chart, #cameras-cards")
       .forEach((region) => region.replaceChildren());
 
-  /* Collapse the detail panels too - they hold one person each. */
-  ["session-detail", "student-detail", "live-summary"].forEach((id) => {
-    const panel = $(id);
-    if (panel) panel.hidden = true;
+  /* Collapse the detail panels too - they hold one person each. Taken from
+     DETAIL_PANELS so a panel added there cannot be forgotten here. */
+  Object.keys(DETAIL_PANELS).forEach((owner) => {
+    DETAIL_PANELS[owner].forEach((id) => {
+      const panel = $(id);
+      if (panel) panel.hidden = true;
+    });
   });
+
+  /* And the trail that led to them: a signed-out session has no "back". */
+  state.viewStack = [];
+  renderBack();
 
   state.session = null;
   state.record = null;
@@ -5614,11 +5834,16 @@ function userError(message) {
   node.hidden = !message;
 }
 
-async function loadAdministration() {
-  const [users, audit] = await Promise.all([
-    api("/api/users"),
-    api("/api/users/audit?limit=50").catch(() => [])
-  ]);
+/*
+   THE ACCOUNT LIST, AND NOTHING ELSE.
+
+   This used to be loadAdministration and it fetched six unrelated things,
+   because the page it filled held six unrelated panels. Those panels are
+   views now and each one loads itself from refresh(); what is left here is
+   the thing the page is actually called after.
+*/
+async function loadTeachers() {
+  const users = await api("/api/users");
 
   const body = $("users-table").querySelector("tbody");
   body.replaceChildren(...users.map((user) =>
@@ -5662,6 +5887,13 @@ async function loadAdministration() {
       button.getAttribute("data-next")));
   });
 
+}
+
+/* The log. Its own page and its own request: nothing else on screen depends
+   on it, and nothing it depends on is on screen. */
+async function loadAudit() {
+  const audit = await api("/api/users/audit?limit=50").catch(() => []);
+
   const auditBody = $("audit-table").querySelector("tbody");
   auditBody.replaceChildren(...(audit.length ? audit : []).map((entry) =>
                                                                el("tr", {}, [
@@ -5678,20 +5910,6 @@ async function loadAdministration() {
                 text: "Nothing has been recorded yet." })
     ]));
   }
-
-  /* The panels added alongside the accounts table. Each fails quietly on its
-     own rather than taking the whole Administration page down with it - an
-     alert rule that will not load must not hide the account list. */
-  await Promise.all([
-    loadPortalAccounts().catch(() => {}),
-    loadAlertDelivery().catch(() => {}),
-    loadAlertRules().catch(() => {}),
-    loadNotifications().catch(() => {}),
-    /* The recognition registry reports its own failure in its own panel
-       rather than silently: which recogniser is in production is exactly the
-       kind of thing somebody must not be left guessing about. */
-    loadModels().catch((failure) => modelError(failure.message))
-  ]);
 }
 
 function renderAssignments() {
@@ -5815,7 +6033,7 @@ async function saveUser() {
       banner(body.username + " can now sign in.");
     }
     $("user-dialog").close();
-    await loadAdministration();
+    await loadTeachers();
   } catch (failure) {
     userError(failure.message);
   } finally {
@@ -5826,7 +6044,7 @@ async function saveUser() {
 async function setUserStatus(userId, status) {
   try {
     await apiSend("/api/users/" + userId, "PATCH", { status });
-    await loadAdministration();
+    await loadTeachers();
   } catch (failure) {
     banner(failure.message, true);
   }
@@ -5838,7 +6056,7 @@ async function deleteUser() {
     await apiSend("/api/users/" + state.editingUser.user_id, "DELETE", null);
     $("user-dialog").close();
     banner(state.editingUser.username + " deleted.", true);
-    await loadAdministration();
+    await loadTeachers();
   } catch (failure) {
     userError(failure.message);
   }
@@ -6805,12 +7023,30 @@ document.addEventListener("DOMContentLoaded", async () => {
   /* The flag is also the way to the live page - the thing somebody wants when
      they notice a session is running. */
   $("session-flag").addEventListener("click", () => switchView("live"));
-  $("nav-models").addEventListener("click", showModelRegistry);
 
-  /* Escape closes the drawer. On a wide screen it is already closed and this
-     does nothing. */
+  /* Back: the button in the top bar, Alt+Left and the browser's own button,
+     all through one stack. */
+  bindBackNavigation();
+
+  /*
+     Escape, in the order somebody expects it.
+
+     A dialog's own Escape is handled by the dialog and is left alone. Below
+     that: the drawer if it is open, then a detail panel if one is. It does
+     NOT change view - Escape that navigates is a surprise, and Alt+Left is
+     the control for that.
+  */
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") closeSidebar();
+    if (event.key !== "Escape") return;
+    if (document.querySelector("dialog[open]")) return;
+
+    if ($("sidebar").dataset.open === "true") {
+      closeSidebar();
+      return;
+    }
+
+    const detail = openDetailPanel();
+    if (detail) goBack();
   });
 
   $("filter-class").addEventListener("change", (event) => {
@@ -6852,15 +7088,9 @@ document.addEventListener("DOMContentLoaded", async () => {
      Deliberately NOT history.back(): this is one page, and on the first view
      somebody opens, history.back() leaves the application entirely.
   */
-  $("close-session").addEventListener("click", () => {
-    $("session-detail").hidden = true;
-    state.session = null;
-    returnToList("sessions-table");
-  });
-
-  $("close-student").addEventListener("click", () => {
-    $("student-detail").hidden = true;
-  });
+  $("close-session").addEventListener("click", goBack);
+  $("close-student").addEventListener("click", goBack);
+  $("close-live-summary").addEventListener("click", goBack);
 
   $("att-status").addEventListener("change", (event) => {
     state.attendanceStatus = event.target.value;
@@ -6964,6 +7194,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   $("cameras-refresh").addEventListener("click", refreshCameras);
   $("cameras-retry").addEventListener("click", refreshCameras);
+  $("audit-refresh").addEventListener("click", () => loadAudit());
 
   $("auth-form").addEventListener("submit", submitAuth);
   $("account-logout").addEventListener("click", signOut);
@@ -6976,7 +7207,6 @@ document.addEventListener("DOMContentLoaded", async () => {
                                       (event) => event.preventDefault());
 
   $("add-user").addEventListener("click", () => openUserDialog(null));
-  bindQuickActions();
   bindReports();
   bindAssistant();
   bindAcademic();

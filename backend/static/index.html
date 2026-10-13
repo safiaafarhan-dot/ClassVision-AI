@@ -1887,6 +1887,70 @@ python database/create_admin.py --reset-password &lt;username&gt;</code></pre>
          and not as the finalised attendance. -->
     <ul class="cards small" id="assembly-cards"></ul>
 
+    <!-- ─────────────── THE HALL TOOLBAR ───────────────
+
+         A hall is not a classroom, and this is the row that admits it. Thirty
+         people in rows can be read; five hundred cannot, so the formation
+         needs the three things a formation of five hundred actually needs:
+         find one person, show me only one state, and arrange the room the way
+         the school is arranged.
+
+         Every control here filters or arranges WHAT IS ALREADY ON SCREEN. Not
+         one of them issues a request, changes a roster, or alters a count: the
+         figures above the hall are always the whole session, and the note
+         under the hall says how many seats the filter is hiding. A filter that
+         silently changed the attendance rate would be the worst control on
+         this page. -->
+    <div class="hall-toolbar" id="assembly-toolbar">
+      <div class="field grow">
+        <label for="assembly-search">Find a person</label>
+        <input type="search" id="assembly-search" autocomplete="off"
+               placeholder="Name, student ID or roll number">
+      </div>
+
+      <div class="field">
+        <label for="assembly-filter">Show</label>
+        <select id="assembly-filter">
+          <option value="">Everyone</option>
+          <option value="present">Present now</option>
+          <option value="absent">Not seen yet</option>
+          <option value="late">Seen earlier</option>
+          <option value="uncertain">Held for review</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="assembly-group">Arrange by</label>
+        <select id="assembly-group">
+          <option value="rows">Rows (fit the hall)</option>
+          <option value="section">Section</option>
+          <option value="roll">Roll number</option>
+          <option value="name">Name</option>
+          <option value="state">State</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="assembly-seat-size">Seat size</label>
+        <select id="assembly-seat-size">
+          <option value="compact">Compact</option>
+          <option value="normal" selected>Normal</option>
+          <option value="large">Large</option>
+        </select>
+      </div>
+
+      <!-- Projector mode. The hall, full screen, for the wall at the back of
+           the room - requestFullscreen on the hall itself rather than a CSS
+           class, so the browser's own Escape gets somebody out of it. -->
+      <button type="button" class="btn" id="assembly-projector"
+              aria-pressed="false" title="Show the hall full screen (F)">
+        Projector mode
+      </button>
+
+      <p class="assembly-filter-note" id="assembly-filter-note"
+         role="status"></p>
+    </div>
+
     <div class="assembly">
 
       <!-- THE HALL. One perspective container holding the stage, the rows and
@@ -1914,6 +1978,149 @@ python database/create_admin.py --reset-password &lt;username&gt;</code></pre>
       </div>
 
       <p class="muted small" id="assembly-formation-note"></p>
+
+      <!-- ─────────────── BY SECTION ───────────────
+
+           A school assembly is organised by section, so this is the reading a
+           head of year actually asks for: which sections are in the hall and
+           which one is still in a corridor. Built from the SAME roster and the
+           SAME presence payload as the formation, grouped in the browser - no
+           second request exists and no figure here can disagree with the ring
+           above. A roster with no section recorded says so rather than
+           inventing a group. -->
+      <section class="pane pane-mid pane-pad"
+               aria-labelledby="assembly-sections-heading">
+        <div class="pane-head">
+          <div>
+            <span class="panel-eyebrow">Who is in</span>
+            <h2 id="assembly-sections-heading">By section</h2>
+          </div>
+          <span class="muted small pane-tools"
+                id="assembly-sections-note"></span>
+        </div>
+        <div id="assembly-sections"></div>
+      </section>
+
+      <div class="panel-grid">
+        <!-- ─────────────── ARRIVALS ───────────────
+
+             The last people the pipeline confirmed, most recent first, with
+             the time it first saw them. Straight off presence.first_seen -
+             these are OBSERVATIONS, not attendance, and the note says so. -->
+        <section class="pane pane-mid pane-pad"
+                 aria-labelledby="assembly-arrivals-heading">
+          <div class="pane-head">
+            <div>
+              <span class="panel-eyebrow">Live feed</span>
+              <h2 id="assembly-arrivals-heading">Arrivals</h2>
+            </div>
+            <span class="muted small pane-tools"
+                  id="assembly-arrivals-count"></span>
+          </div>
+          <ol class="arrivals" id="assembly-arrivals"></ol>
+          <p class="muted small">
+            When the pipeline first confirmed each identity. An observation,
+            not an attendance status &mdash; the rules decide that at
+            finalisation.
+          </p>
+        </section>
+
+        <!-- ─────────────── STILL MISSING ───────────────
+
+             The question somebody in a hall is holding a clipboard for. Names
+             rather than a count, because a count cannot be read out, and with
+             both ways of getting it off the screen: copied to the clipboard
+             for a message, or a CSV for the office.
+
+             Both are built from the roster and presence THIS PAGE ALREADY
+             HAS. No export endpoint is called and no file is written on the
+             server. -->
+        <section class="pane pane-mid pane-pad"
+                 aria-labelledby="assembly-missing-heading">
+          <div class="pane-head">
+            <div>
+              <span class="panel-eyebrow">Not seen yet</span>
+              <h2 id="assembly-missing-heading">Still missing</h2>
+            </div>
+            <span class="muted small pane-tools"
+                  id="assembly-missing-count"></span>
+          </div>
+          <div id="assembly-missing"></div>
+          <div class="table-controls">
+            <button type="button" class="btn btn-quiet"
+                    id="assembly-missing-copy">Copy the list</button>
+            <button type="button" class="btn btn-quiet"
+                    id="assembly-missing-csv">Export CSV</button>
+          </div>
+          <p class="muted small" id="assembly-missing-note">
+            Expected and not yet confirmed. <strong>Not absent</strong>:
+            absence is decided by the rules when the assembly is finalised,
+            and somebody at the back of a hall may simply not have been
+            resolved yet.
+          </p>
+        </section>
+      </div>
+
+      <!-- ─────────────── THE REGISTER ───────────────
+
+           The formation shows shape; this shows evidence. One row per
+           expected student with everything the pipeline reported about them -
+           when it first saw them, for how long, in how many stretches, and
+           what the liveness and authenticity checks said - which is what
+           somebody queried afterwards actually needs.
+
+           Sortable on every column, filtered by the same toolbar as the hall,
+           and exportable as a CSV built here from the payloads already on the
+           page. -->
+      <section class="panel data-panel"
+               aria-labelledby="assembly-register-heading">
+        <div class="panel-head">
+          <div>
+            <span class="panel-eyebrow">Evidence</span>
+            <h2 id="assembly-register-heading">Live register</h2>
+          </div>
+          <div class="row-actions panel-tools">
+            <span class="muted small" id="assembly-register-count"></span>
+            <button type="button" class="btn btn-quiet"
+                    id="assembly-register-csv">Export CSV</button>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table class="data-table" id="assembly-register">
+            <caption class="sr-only">
+              Every expected student, with what the pipeline reported
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col"><button type="button" class="th-sort"
+                    data-sort="name">Student</button></th>
+                <th scope="col"><button type="button" class="th-sort"
+                    data-sort="id">ID</button></th>
+                <th scope="col"><button type="button" class="th-sort"
+                    data-sort="roll">Roll</button></th>
+                <th scope="col"><button type="button" class="th-sort"
+                    data-sort="section">Section</button></th>
+                <th scope="col"><button type="button" class="th-sort"
+                    data-sort="state">State</button></th>
+                <th scope="col"><button type="button" class="th-sort"
+                    data-sort="first">First seen</button></th>
+                <th scope="col"><button type="button" class="th-sort"
+                    data-sort="duration">Seen for</button></th>
+                <th scope="col" class="num">Stretches</th>
+                <th scope="col">Liveness</th>
+                <th scope="col">Authenticity</th>
+                <th scope="col"></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="muted small">
+          Liveness and authenticity are <strong>research prototypes</strong>
+          and neither is an identity check. A row reads &ldquo;No data&rdquo;
+          where the pipeline reported nothing, never a zero nobody measured.
+        </p>
+      </section>
 
       <div class="panel-grid">
         <section class="pane pane-mid pane-pad" data-reach="true"
@@ -1991,8 +2198,14 @@ python database/create_admin.py --reset-password &lt;username&gt;</code></pre>
                id="assembly-summary" hidden
                aria-labelledby="assembly-summary-heading">
         <div class="assembly-summary-head">
-          <span class="assembly-done">Assembly completed</span>
-          <h2 id="assembly-summary-heading">Summary</h2>
+          <div>
+            <span class="assembly-done">Assembly completed</span>
+            <h2 id="assembly-summary-heading">Summary</h2>
+          </div>
+          <button type="button" class="btn btn-quiet"
+                  id="close-assembly-summary">
+            <span aria-hidden="true">&larr;</span> Back to the hall
+          </button>
         </div>
 
         <dl class="meta" id="assembly-summary-meta"></dl>
