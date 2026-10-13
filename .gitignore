@@ -1,0 +1,63 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+build/
+dist/
+.Python
+
+# ---- Virtual environment ----
+.venv/
+venv/
+env/
+
+# ---- Environment / secrets ----
+.env
+.env.*
+!.env.example
+
+# ---- Project data (large / generated) ----
+# Ignore the contents, but keep the folders in the repo.
+models/*
+!models/.gitkeep
+datasets/*
+!datasets/.gitkeep
+
+# ---- BIOMETRIC DATA - never commit ----
+# data/ holds face embeddings, which are biometric information about real
+# people. Nothing in here may ever reach the repository.
+data/
+*.npz
+*.npy
+
+# The attendance database lives in data/ and is covered above. These entries
+# make sure a database placed anywhere else is never committed either.
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# ---- Temporary files ----
+*.log
+*.tmp
+*.bak
+*.swp
+temp/
+tmp/
+
+# ---- OS files ----
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# ---- IDE / editor ----
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# ---- Notebooks ----
+.ipynb_checkpoints/

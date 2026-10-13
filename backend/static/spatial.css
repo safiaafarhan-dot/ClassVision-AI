@@ -1,0 +1,2290 @@
+/* =========================================================================
+   THE SPATIAL LAYER
+   =========================================================================
+
+   ClassVision AI drawn as a ROOM rather than as a page.
+
+   This stylesheet is the second half of the interface's appearance, and it is
+   deliberately a separate file from styles.css. The split is not arbitrary:
+
+     styles.css    what the console IS. Palette, type, tables, forms,
+                   panels, pills - everything a reader has to be able to
+                   read, and everything the contrast test measures.
+
+     spatial.css   what the console FEELS LIKE. Depth, glass, parallax, the
+                   orbit navigation, the holographic markers, the 3D stage
+                   the dashboard stands in, and Assembly Mode.
+
+   The rule between them, and it holds in both directions: a figure somebody
+   has to read is drawn by styles.css on an opaque-enough --surface, and this
+   file never puts blur, motion or a gradient behind one. Delete this file
+   and the product still works - every number, table, form and control is
+   still there and still legible. That is the test of whether a visual layer
+   sits ON TOP of a working system or has replaced it.
+
+   WHAT THIS FILE MAY NOT DO, and tests/test_spatial_interface.py checks all
+   four:
+
+     no fetched asset  no image file, no font file, no external host, and
+                       so not one CSS url reference in the file. The
+                       interface still loads on a classroom machine with no
+                       network, which is a promise the project makes on its
+                       own sign-in screen.
+     no status colour  in the decorative half. A drifting mote that borrowed
+                       --present would be decoration carrying meaning. The
+                       functional half - a student avatar, which genuinely
+                       reports presence - may use them, and the file is
+                       ordered so the two halves stay separable.
+     nothing behind a  no backdrop-filter, no gradient and no animation on
+     figure            a selector a measured value is painted on.
+     everything stops  prefers-reduced-motion switches off every animation
+                       in here BY NAME, not by shortening it.
+
+   BOTH THEMES, from one set of rules. Every colour here is a token out of
+   styles.css, so the room is a midnight hall in the dark theme and a bright
+   glass atrium in the light one. Nothing in this file is a literal colour
+   except pure white and pure black inside a few highlight gradients, where
+   the point is light rather than hue.
+   ========================================================================= */
+
+
+/* =========================================================================
+   1. THE POINTER, AS A LIGHT SOURCE
+   -------------------------------------------------------------------------
+   Two custom properties on the root, written by spatial.js on pointermove
+   and normalised to -1..1 from the middle of the viewport.
+
+   Everything that parallaxes reads those two numbers. That is the whole
+   mechanism: one listener, two properties, and every layer decides for
+   itself how far to lean. A layer that wants no parallax ignores them, which
+   is why none of the effects in this file needs JavaScript of its own.
+   ========================================================================= */
+
+:root {
+  --mx: 0;
+  --my: 0;
+  /* How far the deepest layer travels at full pointer deflection. Small on
+     purpose: the illusion is depth, and a background that visibly slides is
+     a background somebody is looking at instead of the data. */
+  --parallax: 14px;
+  /* The lift a surface takes when the pointer is over it. One value, so
+     every interactive surface in the room agrees about how far "towards the
+     reader" is. */
+  --lift: 10px;
+}
+
+
+/* =========================================================================
+   2. THE CURSOR
+   -------------------------------------------------------------------------
+   A small filled dot, with a ring that trails it. The ring carries the
+   state: it opens over something interactive, squares its corners over
+   glass, tightens to a probe over a 3D object, and becomes a caret over
+   text.
+
+   Deliberately NOT a spring. A cursor that overshoots and wobbles is the
+   commonest way this effect is done and it makes a pointer feel broken. The
+   ring here is critically damped: it lags, it arrives, and it never passes
+   the dot.
+
+   It replaces the native cursor only where there is a real pointer, and only
+   once the pointer has actually moved. On a touch screen, and for anybody
+   whose script never ran, the native cursor is left exactly as it was - an
+   interface whose pointer is a JavaScript object is an interface that loses
+   its pointer when a script fails.
+   ========================================================================= */
+
+.cursor-dot, .cursor-ring {
+  position: fixed;
+  top: 0; left: 0;
+  z-index: 9999;
+  pointer-events: none;
+  border-radius: 50%;
+  opacity: 0;
+  transform: translate3d(-120px, -120px, 0);
+}
+
+.cursor-dot {
+  width: 5px; height: 5px;
+  margin: -2.5px 0 0 -2.5px;
+  background: var(--accent);
+  box-shadow: var(--glow-soft);
+}
+
+.cursor-ring {
+  width: 26px; height: 26px;
+  margin: -13px 0 0 -13px;
+  border: 1px solid var(--ring);
+  transition: width var(--fast) var(--ease), height var(--fast) var(--ease),
+              margin var(--fast) var(--ease),
+              border-radius var(--fast) var(--ease),
+              border-color var(--fast) var(--ease),
+              opacity var(--fast) linear;
+}
+
+body.has-cursor .cursor-dot { opacity: 1; }
+body.has-cursor .cursor-ring { opacity: .7; }
+
+/* Over a button, a link, a tab, a control: the ring opens and takes the
+   accent, which is the "this responds" signal. */
+body.has-cursor .cursor-ring[data-over="control"] {
+  width: 42px; height: 42px; margin: -21px 0 0 -21px;
+  border-color: var(--accent);
+  opacity: 1;
+}
+
+/* Over glass: a rounded square, because the thing underneath has corners. */
+body.has-cursor .cursor-ring[data-over="glass"] {
+  width: 34px; height: 34px; margin: -17px 0 0 -17px;
+  border-radius: 10px;
+  border-color: var(--glass-line);
+}
+
+/* Over a 3D object or a data point: a tight bright probe. */
+body.has-cursor .cursor-ring[data-over="object"] {
+  width: 18px; height: 18px; margin: -9px 0 0 -9px;
+  border-color: var(--accent);
+  box-shadow: var(--glow-soft);
+  opacity: 1;
+}
+
+/* Over a sentence: both marks get out of the way of the words. */
+body.has-cursor .cursor-ring[data-over="text"] {
+  width: 2px; height: 20px; margin: -10px 0 0 -1px;
+  border-radius: 1px;
+  border-color: var(--text-muted);
+}
+
+body.has-cursor.pressing .cursor-ring {
+  width: 14px; height: 14px; margin: -7px 0 0 -7px;
+}
+
+/* The native cursor goes only once the replacement is really running, and
+   only on a device whose pointer hovers. */
+@media (hover: hover) and (pointer: fine) {
+  body.has-cursor,
+  body.has-cursor a,
+  body.has-cursor button,
+  body.has-cursor .pane,
+  body.has-cursor .orbit-node { cursor: none; }
+}
+
+/* Never over something being typed into. A text caret is a real affordance
+   and a dot is not a substitute for it. */
+body.has-cursor input,
+body.has-cursor textarea,
+body.has-cursor select { cursor: auto; }
+
+
+/* =========================================================================
+   3. THE LIVING BACKGROUND
+   -------------------------------------------------------------------------
+   One canvas on a fixed layer behind everything, painted by spatial.js:
+   drifting motes, slow glass fragments, thin light trails and a few large
+   spheres far off. The depth fog and the floor are CSS, because a gradient
+   costs nothing and a fogged canvas costs a per-pixel pass every frame.
+
+   Back to front: the body colour, this canvas, the fog, the existing ground
+   wash on body::before, then the interface. A reader never sees any of it
+   move behind a figure, because the panels above are opaque enough to stop
+   it - which is what the alpha on --surface is for.
+   ========================================================================= */
+
+.deep {
+  position: fixed;
+  /* Oversized and offset, so leaning the layer never exposes an edge. */
+  left: -2vw; top: -2vh;
+  width: 104vw; height: 104vh;
+  z-index: -3;
+  pointer-events: none;
+  transform: translate3d(calc(var(--mx) * var(--parallax) * -1),
+                         calc(var(--my) * var(--parallax) * -1), 0);
+  transition: transform 420ms var(--ease);
+}
+
+/* Depth fog. The room hazes towards its edges, which is what stops the motes
+   reading as a flat starfield pasted behind the page. */
+.deep-fog {
+  position: fixed; inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background-image:
+    radial-gradient(135% 105% at 50% 50%, transparent 36%, var(--fog) 100%),
+    radial-gradient(72% 56% at 50% 118%, var(--core-haze), transparent 70%);
+}
+
+/* The horizon: the engineering grid laid flat and converging. The single
+   cheapest cue that the interface is standing in a space rather than lying
+   on a page. */
+.deep-floor {
+  position: fixed;
+  left: -12vw; right: -12vw; bottom: -5vh;
+  height: 46vh;
+  z-index: -2;
+  pointer-events: none;
+  background-image:
+    linear-gradient(transparent, var(--stage) 94%),
+    repeating-linear-gradient(90deg,
+      var(--stage-line) 0 1px, transparent 1px 7.5%);
+  transform: perspective(620px) rotateX(74deg)
+             translateY(calc(var(--my) * 7px));
+  transform-origin: 50% 100%;
+  opacity: .55;
+  mask-image: linear-gradient(transparent, #000 48%, #000);
+  -webkit-mask-image: linear-gradient(transparent, #000 48%, #000);
+}
+
+
+/* =========================================================================
+   4. GLASS, IN THREE DEPTHS
+   -------------------------------------------------------------------------
+   .pane is the material. Three depth classes differ in opacity, blur, scale
+   and shadow, because depth is carried by the DIFFERENCE between planes -
+   an interface where everything is equally transparent reads as a smear.
+
+     .pane-far    the furthest wall. Thin, heavily blurred, slightly
+                  smaller, and it holds no figure: context only.
+     .pane-mid    the default. Panels of information.
+     .pane-near   under the pointer, or the one thing a screen is for.
+
+   The edges are what make a pane read as glass rather than as a faded box:
+   light catches the top lip (::before), the body is tinted, and a hairline
+   separates one pane from the next. That is the same three-token idea
+   styles.css already uses for its panels, applied to a surface that is also
+   positioned in space.
+   ========================================================================= */
+
+.pane {
+  position: relative;
+  border: 1px solid var(--glass-line);
+  border-radius: var(--radius-lg);
+  background-image: linear-gradient(160deg, var(--glass-hi), transparent 42%),
+                    linear-gradient(var(--glass-tint), var(--glass-tint));
+  background-color: var(--glass-mid);
+  backdrop-filter: blur(var(--blur)) saturate(118%);
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(118%);
+  box-shadow: var(--shadow), inset 0 1px 0 var(--glass-edge);
+  transform-style: preserve-3d;
+  transition: transform var(--slow) var(--ease),
+              box-shadow var(--slow) var(--ease),
+              background-color var(--slow) var(--ease),
+              border-color var(--slow) var(--ease);
+}
+
+/* The lit top lip. A one-pixel bar, brightest in the middle, which is how a
+   real edge catches a light above it. */
+.pane::before {
+  content: "";
+  position: absolute; inset: 0 0 auto 0; height: 1px;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background-image: linear-gradient(90deg, transparent,
+                                    var(--glass-edge) 22%,
+                                    var(--glass-edge) 78%, transparent);
+  opacity: .85;
+  pointer-events: none;
+}
+
+.pane-far {
+  background-color: var(--glass-far);
+  backdrop-filter: blur(26px) saturate(104%);
+  -webkit-backdrop-filter: blur(26px) saturate(104%);
+  border-color: var(--border-faint);
+  box-shadow: var(--shadow-sm);
+  transform: scale(.985);
+}
+
+.pane-mid { background-color: var(--glass-mid); }
+
+.pane-near {
+  background-color: var(--glass-near);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-lift), inset 0 1px 0 var(--glass-edge);
+}
+
+/* Towards the reader on hover. The whole physical vocabulary of this
+   interface is one idea - interactive things approach - and this is it. */
+@media (hover: hover) {
+  .pane[data-reach="true"]:hover {
+    transform: translate3d(0, calc(var(--lift) * -1), 0) scale(1.006);
+    background-color: var(--glass-near);
+    border-color: var(--border-strong);
+    box-shadow: var(--shadow-lift), inset 0 1px 0 var(--glass-edge);
+  }
+}
+
+/* And on focus, by keyboard, with no hover involved. An effect only a mouse
+   can reach is an effect half the room cannot. */
+.pane[data-reach="true"]:focus-within {
+  transform: translate3d(0, calc(var(--lift) * -1), 0);
+  border-color: var(--border-strong);
+}
+
+/* A pane carrying a title and a right-aligned tool row. Same shape as
+   .panel-head in styles.css, restated here because a pane is not a panel
+   and must not inherit its padding. */
+.pane-head {
+  display: flex; align-items: baseline; gap: .75rem;
+  flex-wrap: wrap;
+  margin-bottom: .6rem;
+}
+.pane-head h2, .pane-head h3 { margin: 0; }
+.pane-head .pane-tools { margin-left: auto; display: flex; gap: .4rem; }
+
+.pane-body { padding: 1rem 1.15rem; }
+.pane-pad { padding: 1rem 1.15rem; }
+
+
+/* =========================================================================
+   5. THE ENTRY SCENE
+   -------------------------------------------------------------------------
+   What a teacher sees first, after signing in and before the console.
+
+   A large translucent sphere with a miniature classroom turning inside it,
+   drawn on a canvas by spatial.js; three tilted rings around it in CSS; the
+   product's name beside it; and one button into the room.
+
+   It is a THRESHOLD, not a splash screen, and the difference is that it can
+   be crossed instantly: the button holds focus the moment the scene appears,
+   so Enter goes straight through, and Escape does the same. Nobody waiting
+   to start a lesson is made to watch an animation.
+   ========================================================================= */
+
+/* While the threshold is up the console behind it does not scroll. It is
+   loading, it is covered, and a scrollbar dragging an invisible page is a
+   control with nothing behind it. */
+body.entering { overflow: hidden; }
+
+.entry {
+  position: fixed; inset: 0;
+  z-index: 60;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+  align-items: center;
+  gap: clamp(1rem, 4vw, 4rem);
+  padding: clamp(1.25rem, 5vw, 5rem);
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(1200px 760px at 72% 46%, var(--core-haze), transparent 62%),
+    radial-gradient(900px 620px at 6% 4%, var(--accent-2-soft), transparent 58%);
+  overflow: hidden;
+}
+
+/* The scene. Order matters: canvas, then the rings over it, then nothing -
+   the copy is in the other grid column and never overlaps the sphere. */
+/* Both columns are placed on row 1 explicitly.
+
+   Column alone is not enough. The scene is first in the document and asks for
+   column 2; auto-placement then looks for somewhere to put the copy, and
+   because it only ever moves FORWARD it will not go back to the empty cell at
+   row 1 column 1 - so the copy lands on a second row, the grid becomes twice
+   the height of the viewport, and the sphere is pushed off the top of the
+   screen. Naming the row for both items is the fix. */
+.entry-stage {
+  position: relative;
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: center;
+  width: min(100%, 620px);
+  aspect-ratio: 1;
+  transform: translate3d(calc(var(--mx) * 18px), calc(var(--my) * 14px), 0);
+  transition: transform 500ms var(--ease);
+}
+
+#entry-canvas {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+}
+
+/* The glass shell of the sphere, over the classroom inside it. A ring of
+   light at the rim and a soft highlight top-left: the two marks that read as
+   curved glass. No blur here - the canvas behind it is the content, and
+   blurring the miniature classroom would be blurring the point. */
+.entry-shell {
+  position: absolute; inset: 9%;
+  border-radius: 50%;
+  pointer-events: none;
+  border: 1px solid var(--glass-line);
+  background-image:
+    radial-gradient(42% 38% at 30% 24%, var(--glass-hi), transparent 68%),
+    radial-gradient(100% 100% at 50% 50%, transparent 58%, var(--glass-rim) 97%);
+  box-shadow: inset 0 0 70px var(--core-haze), var(--glow-soft);
+}
+
+/* Three orbit rings, tilted onto different axes so they read as orbits
+   rather than as concentric circles. */
+.entry-rings {
+  position: absolute; inset: 0;
+  pointer-events: none;
+  transform-style: preserve-3d;
+  perspective: 900px;
+}
+.entry-ring {
+  position: absolute; inset: 4%;
+  border-radius: 50%;
+  border: 1px solid var(--glass-rim);
+}
+.entry-ring-a {
+  transform: rotateX(74deg) rotateZ(0deg);
+  animation: entry-orbit 26s linear infinite;
+}
+.entry-ring-b {
+  inset: -4%;
+  border-color: var(--border-faint);
+  transform: rotateX(66deg) rotateY(26deg);
+  animation: entry-orbit 38s linear infinite reverse;
+}
+.entry-ring-c {
+  inset: 14%;
+  border-style: dashed;
+  border-color: var(--trail);
+  transform: rotateX(80deg);
+  animation: entry-orbit 19s linear infinite;
+}
+
+@keyframes entry-orbit { to { rotate: z 360deg; } }
+
+/* The copy. Left column, and it is the only part of this screen a screen
+   reader walks through - the scene is decoration and says so. */
+.entry-copy {
+  grid-column: 1;
+  grid-row: 1;
+  max-width: 44ch;
+  transform: translate3d(calc(var(--mx) * -7px), calc(var(--my) * -5px), 0);
+  transition: transform 500ms var(--ease);
+}
+
+.entry-eyebrow {
+  margin: 0 0 .7rem;
+  font-family: var(--font-mono);
+  font-size: .72rem; font-weight: 700;
+  letter-spacing: .22em; text-transform: uppercase;
+  color: var(--accent);
+}
+
+.entry-title {
+  margin: 0 0 .5rem;
+  font-size: clamp(2.1rem, 6vw, 3.9rem);
+  font-weight: 700;
+  line-height: 1.02;
+  letter-spacing: -.035em;
+}
+.entry-title em {
+  font-style: normal;
+  background-image: linear-gradient(100deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.entry-lede {
+  margin: 0 0 1.1rem;
+  font-size: 1.02rem;
+  color: var(--text-muted);
+}
+
+/* Three statements about the scene the reader is looking at, each true of
+   the code behind it. No figures: nothing has been fetched yet, so there is
+   nothing to report and this screen invents none. */
+.entry-points {
+  list-style: none; margin: 0 0 1.4rem; padding: 0;
+  display: grid; gap: .5rem;
+}
+.entry-points li {
+  display: flex; gap: .55rem; align-items: flex-start;
+  font-size: .86rem; color: var(--text-muted);
+}
+.entry-points b {
+  display: block; color: var(--text); font-weight: 650;
+}
+.entry-points .entry-tick {
+  flex: 0 0 auto;
+  width: 18px; height: 18px; margin-top: .12rem;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  font-size: .62rem;
+  color: var(--accent);
+  border: 1px solid var(--glass-rim);
+  background-color: var(--accent-soft);
+}
+
+.entry-actions { display: flex; gap: .7rem; flex-wrap: wrap; align-items: center; }
+
+/* The one way in. Larger than any other button in the product, because it
+   is the only control on the screen. */
+.entry-enter {
+  font-size: .95rem;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  padding: .8rem 1.5rem;
+}
+
+.entry-hint {
+  margin: .9rem 0 0;
+  font-family: var(--font-mono);
+  font-size: .72rem; letter-spacing: .06em;
+  color: var(--text-dim);
+}
+
+/* The arrival of the scene itself, once. */
+.entry:not([hidden]) .entry-copy { animation: entry-rise 620ms var(--ease) both; }
+.entry:not([hidden]) .entry-stage { animation: entry-swell 900ms var(--ease) both; }
+
+@keyframes entry-rise {
+  from { opacity: 0; transform: translate3d(0, 16px, 0); }
+}
+@keyframes entry-swell {
+  from { opacity: 0; transform: scale(.92); }
+}
+
+/* Leaving. The scene falls away from the reader and the console is revealed
+   behind it - the one cinematic moment in the product, and it lasts less
+   than a second. */
+.entry.entry-leaving {
+  animation: entry-depart 620ms var(--ease) forwards;
+  pointer-events: none;
+}
+@keyframes entry-depart {
+  to { opacity: 0; transform: scale(1.14); filter: blur(10px); }
+}
+
+
+/* =========================================================================
+   6. THE RAIL
+   -------------------------------------------------------------------------
+   The navigation's glass, its ambient light, and its collapsed width.
+
+   WHAT WAS HERE BEFORE, AND WHY IT IS GONE.
+
+   This section used to bend the rail into an arc of glass circles with the
+   labels folded away until hover. It looked striking in a screenshot and it
+   was wrong: a navigation whose labels are invisible until you point at them
+   is a navigation you cannot read, and "the text is difficult to see" was the
+   first thing said about it. An arc of unlabelled circles also puts the whole
+   burden of the rail on icon recognition, which is fine for the four icons
+   somebody uses daily and useless for the other seven.
+
+   So the labels are back, permanently, in --text. The icon-only mode still
+   exists - it is genuinely useful on a 13-inch screen - but it is now a
+   CHOICE somebody makes with a button, it is remembered, and it brings a
+   tooltip with it. Nobody is put in it without asking.
+
+   EVERYTHING IN THIS SECTION IS DECORATION, and the test for this file holds
+   it to that: remove this file and the rail in styles.css is a completely
+   legible, completely working navigation in both themes. What is added here
+   is depth - the glass, the light down the leading edge, the lift on hover -
+   and none of it is painted over a word.
+   ========================================================================= */
+
+/* ---- the brand card ------------------------------------------------------
+
+   Glass, and a slow sweep of light across the mark. The sweep is on a
+   pseudo-element UNDER the text, which is the rule this whole file follows:
+   an ambient gradient never lands on top of something somebody reads. */
+
+.rail-brand {
+  position: relative;
+  overflow: hidden;
+  backdrop-filter: blur(10px) saturate(115%);
+  -webkit-backdrop-filter: blur(10px) saturate(115%);
+  box-shadow: inset 0 1px 0 var(--glass-hi);
+}
+
+/* The ambient wash behind the brand. z-index 0 against the content's 1. */
+.rail-brand::before {
+  content: "";
+  position: absolute; inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(120% 140% at 0% 0%, var(--accent-soft), transparent 62%);
+}
+.rail-brand > * { position: relative; z-index: 1; }
+
+/* The iris. A second ring outside the one styles.css draws, turning slowly -
+   the camera the product looks through, at the size of a favicon. */
+.rail-brand .brand-mark::before {
+  content: "";
+  position: absolute; inset: -7px;
+  border-radius: 16px;
+  border: 1px solid var(--glass-rim);
+  border-top-color: var(--accent);
+  opacity: .75;
+  pointer-events: none;
+  animation: rail-iris 9s linear infinite;
+}
+@keyframes rail-iris { to { rotate: 360deg; } }
+
+/* ---- the items -----------------------------------------------------------
+
+   A lit leading edge on the current item, and a soft ground under a hovered
+   one. Both sit behind the label rather than over it. */
+
+.nav-item[aria-current="page"] {
+  box-shadow:
+    inset 0 1px 0 var(--glass-hi),
+    0 2px 10px -4px var(--core-haze);
+}
+
+/* The marker glows, so the rail reads at a glance from across a room. The
+   marker itself is in styles.css and is already keyed off aria-current, which
+   is what keeps this honest: the glow cannot appear anywhere the real state
+   is not. */
+.nav-item[aria-current="page"]::before {
+  box-shadow: 0 0 10px var(--ring);
+}
+
+/* ---- the user card ------------------------------------------------------- */
+
+.rail-user {
+  position: relative;
+  overflow: hidden;
+  backdrop-filter: blur(10px) saturate(115%);
+  -webkit-backdrop-filter: blur(10px) saturate(115%);
+  box-shadow: inset 0 1px 0 var(--glass-hi);
+}
+.rail-user::before {
+  content: "";
+  position: absolute; inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(120% 140% at 100% 100%, var(--accent-2-soft), transparent 60%);
+}
+.rail-user > * { position: relative; z-index: 1; }
+
+.rail-avatar { box-shadow: var(--glow-soft), inset 0 1px 0 var(--glass-hi); }
+
+/* ---- the collapsed rail --------------------------------------------------
+
+   Icons only, with the label as a tooltip.
+
+   Scoped to the wide breakpoint on purpose. Below 1080px the rail is already
+   an off-canvas drawer opened by the top bar's hamburger, the collapse button
+   is not shown, and a half-width drawer would be neither one thing nor the
+   other. The attribute may be set; at that width it styles nothing. */
+
+@media (min-width: 1081px) {
+  body[data-rail="collapsed"] .app-shell {
+    grid-template-columns: var(--sidebar-w-collapsed) minmax(0, 1fr);
+  }
+
+  /* The width itself animates, which is the whole point of doing this in the
+     grid rather than by swapping a class on the rail. */
+  .app-shell {
+    transition: grid-template-columns 260ms var(--ease);
+  }
+
+  body[data-rail="collapsed"] .sidebar-head { justify-content: center; }
+  body[data-rail="collapsed"] .rail-brand {
+    padding: .45rem;
+    justify-content: center;
+    background: none;
+    border-color: transparent;
+  }
+  body[data-rail="collapsed"] .rail-brand::before { opacity: 0; }
+  body[data-rail="collapsed"] .brand-text,
+  body[data-rail="collapsed"] .nav-group-label,
+  body[data-rail="collapsed"] .rail-user-text,
+  body[data-rail="collapsed"] .sidebar-status {
+    display: none;
+  }
+
+  /* The theme switch keeps its three glyphs and loses its three words.
+     font-size rather than display, because the words are BARE TEXT NODES
+     beside the glyph span - there is no element to hide, which is why the
+     first attempt at this left "Auto", "Light" and "Dark" on screen and the
+     stacked switch pushed the user card off the bottom of the rail. */
+  body[data-rail="collapsed"] .theme-switch button { font-size: 0; }
+  body[data-rail="collapsed"] .theme-switch button > [aria-hidden] {
+    font-size: .82rem;
+  }
+
+  /* The collapse button moves under the mark and its chevron turns round. */
+  body[data-rail="collapsed"] .sidebar-head { flex-wrap: wrap; gap: .4rem; }
+  body[data-rail="collapsed"] .rail-collapse-icon { transform: scaleX(-1); }
+
+  body[data-rail="collapsed"] .sidebar-nav { padding: .85rem .5rem 1rem; }
+
+  /* An item becomes a square with the icon centred. The label is still in the
+     DOM and still the button's accessible name - it is positioned off to the
+     side and revealed on hover, not removed. */
+  body[data-rail="collapsed"] .nav-item {
+    justify-content: center;
+    padding: .55rem 0;
+  }
+  body[data-rail="collapsed"] .nav-sub { padding-left: 0; }
+
+  body[data-rail="collapsed"] .nav-label {
+    position: absolute;
+    left: calc(100% + .5rem);
+    top: 50%;
+    translate: -6px -50%;
+    z-index: 30;
+    padding: .34rem .6rem;
+    border-radius: var(--radius-sm);
+    font-size: .8rem;
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+    border: 1px solid var(--glass-line);
+    /* --surface-solid, not glass. A tooltip is a few words over whatever the
+       page happens to be showing, and it is the one surface in this file that
+       must not be see-through. */
+    background: var(--surface-solid);
+    box-shadow: var(--shadow-lift);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 180ms linear, translate 180ms var(--ease);
+  }
+  body[data-rail="collapsed"] .nav-item:hover .nav-label,
+  body[data-rail="collapsed"] .nav-item:focus-visible .nav-label {
+    opacity: 1;
+    translate: 0 -50%;
+  }
+
+  /* Hovering must not slide a 76px rail sideways. */
+  body[data-rail="collapsed"] .nav-item:hover,
+  body[data-rail="collapsed"] .nav-item:focus-visible,
+  body[data-rail="collapsed"] .nav-item[aria-current="page"] {
+    transform: none;
+  }
+
+  body[data-rail="collapsed"] .rail-user {
+    justify-content: center;
+    padding: .45rem;
+    background: none;
+    border-color: transparent;
+  }
+  body[data-rail="collapsed"] .rail-user::before { opacity: 0; }
+  body[data-rail="collapsed"] .rail-signout { display: none; }
+
+  body[data-rail="collapsed"] .theme-switch {
+    flex-direction: column;
+    gap: .15rem;
+  }
+}
+
+/* ---- the tablet rail -----------------------------------------------------
+
+   Narrower, not collapsed. Between 1081 and 1240 there is room for labels but
+   not for a generous rail, so the rail gives width back to the workspace and
+   keeps every word. */
+
+@media (min-width: 1081px) and (max-width: 1240px) {
+  body:not([data-rail="collapsed"]) .app-shell {
+    grid-template-columns: 228px minmax(0, 1fr);
+  }
+  body:not([data-rail="collapsed"]) .nav-item { font-size: .845rem; }
+  body:not([data-rail="collapsed"]) .rail-brand .brand-text strong {
+    font-size: .9rem;
+  }
+}
+
+
+/* =========================================================================
+   7. THE STAGE
+   -------------------------------------------------------------------------
+   The dashboard, standing in a room instead of scrolling as a page.
+
+   A perspective container with the central object in the middle and panes
+   at four depths around it. The panes are ordinary panels of real data; what
+   this adds is WHERE they sit. On a narrow screen the whole grid collapses
+   to one column and the perspective is dropped, which is the 2.5D mode - the
+   glass, the depth shading and the arrival stay, the spatial arrangement
+   goes.
+   ========================================================================= */
+
+.stage {
+  position: relative;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, .82fr) minmax(0, 1.5fr) minmax(0, .82fr);
+  grid-template-areas:
+    "top    top    top"
+    "left   core   right"
+    "bottom bottom bottom";
+  perspective: 1500px;
+  perspective-origin: 50% 42%;
+  margin-bottom: 1.1rem;
+}
+
+.stage-top    { grid-area: top; }
+.stage-left   { grid-area: left; }
+.stage-core   { grid-area: core; }
+.stage-right  { grid-area: right; }
+.stage-bottom { grid-area: bottom; }
+
+/* The depths. Each flank is rotated slightly inwards and pushed back, so the
+   reader is standing between them rather than in front of them. The centre
+   comes forward. These are small angles on purpose: a 20-degree panel is a
+   panel whose text is distorted. */
+.stage-left  { transform: rotateY(2.6deg) translateZ(-38px); }
+.stage-right { transform: rotateY(-2.6deg) translateZ(-38px); }
+.stage-top    { transform: translateZ(-62px); }
+.stage-bottom { transform: translateZ(-20px); }
+.stage-core   { transform: translateZ(26px); }
+
+.stage > * {
+  transition: transform var(--slow) var(--ease);
+  transform-style: preserve-3d;
+}
+
+/* The room leans with the pointer, as one object. Leaning the panes
+   individually makes them slide against each other, which reads as broken
+   rather than as deep. */
+.stage {
+  rotate: y calc(var(--mx) * 1.1deg);
+  transition: rotate 520ms var(--ease);
+}
+
+/* Hovering a flank squares it up and brings it forward: the pane you are
+   reading is the pane facing you. */
+@media (hover: hover) {
+  .stage-left:hover  { transform: rotateY(0deg) translateZ(-6px); }
+  .stage-right:hover { transform: rotateY(0deg) translateZ(-6px); }
+  .stage-top:hover    { transform: translateZ(-18px); }
+  .stage-bottom:hover { transform: translateZ(0); }
+}
+.stage-left:focus-within  { transform: rotateY(0deg) translateZ(-6px); }
+.stage-right:focus-within { transform: rotateY(0deg) translateZ(-6px); }
+
+
+/* =========================================================================
+   8. THE AI CORE
+   -------------------------------------------------------------------------
+   The object in the middle of the room: a turning geometric core inside a
+   glass shell, with motes in orbit. Canvas, painted by spatial.js.
+
+   The figures AROUND it - detected, present, absent, the rate - are ordinary
+   .card modules from styles.css, laid out in a ring. They are real values
+   off the live endpoints and they are drawn on opaque surfaces, which is why
+   the blur in here stops at the shell.
+   ========================================================================= */
+
+.core-wrap {
+  position: relative;
+  display: grid;
+  place-items: center;
+  padding: 1.1rem;
+  min-height: 300px;
+}
+
+.core-stage {
+  position: relative;
+  width: min(100%, 340px);
+  aspect-ratio: 1;
+}
+
+#core-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+/* The glass shell around the core. Same two marks as the entry sphere. */
+.core-shell {
+  position: absolute; inset: 6%;
+  border-radius: 50%;
+  pointer-events: none;
+  border: 1px solid var(--glass-line);
+  background-image:
+    radial-gradient(40% 36% at 32% 26%, var(--glass-hi), transparent 66%),
+    radial-gradient(100% 100% at 50% 50%, transparent 60%, var(--glass-rim) 98%);
+  box-shadow: inset 0 0 56px var(--core-haze);
+}
+
+/* What the core is reporting, in its middle. A word and a state, never a
+   figure - a number inside a turning object is a number nobody can read. */
+.core-caption {
+  position: absolute;
+  inset: auto 0 38% 0;
+  text-align: center;
+  pointer-events: none;
+}
+.core-caption .core-word {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: .7rem; font-weight: 700;
+  letter-spacing: .2em; text-transform: uppercase;
+  color: var(--accent);
+}
+.core-caption .core-state {
+  display: block;
+  font-size: .76rem;
+  color: var(--text-muted);
+}
+
+/* The figures, in a ring around the core on a wide screen and in a plain row
+   below it on a narrow one. */
+.core-ring-figures {
+  list-style: none; margin: .4rem 0 0; padding: 0;
+  display: grid; gap: .55rem;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+}
+
+
+/* =========================================================================
+   9. THE ATTENDANCE RING
+   -------------------------------------------------------------------------
+   One number, large, inside a ring that is physically in the room.
+
+   The arc is a conic gradient driven by an @property angle, which is what
+   lets the ring ANIMATE to a new value rather than jump to it: a registered
+   custom property of type <angle> is interpolable, so a transition on it is
+   a smooth sweep. Where @property is unsupported the ring simply shows the
+   value with no sweep, which is correct and not broken.
+
+   The figure in the middle is set by styles.css on no background of its own
+   and with no blur behind it. The ring is decoration around a number; it is
+   never drawn over one.
+   ========================================================================= */
+
+@property --arc {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+.att-ring {
+  position: relative;
+  width: min(100%, 232px);
+  aspect-ratio: 1;
+  margin: 0 auto;
+  display: grid;
+  place-items: center;
+  /* Floating: a slow bob, and a shadow beneath it that keeps it off the
+     floor. */
+  animation: ring-float 9s ease-in-out infinite;
+}
+
+/* The track and the arc, as two stacked rings. The arc is masked to a band
+   so the conic gradient reads as a stroke and not as a pie. */
+.att-ring::before,
+.att-ring::after {
+  content: "";
+  position: absolute; inset: 0;
+  border-radius: 50%;
+  mask-image: radial-gradient(farthest-side, transparent calc(100% - 13px),
+                              #000 calc(100% - 12px));
+  -webkit-mask-image: radial-gradient(farthest-side, transparent calc(100% - 13px),
+                                      #000 calc(100% - 12px));
+}
+.att-ring::before { background-image: conic-gradient(var(--border-faint) 0 360deg); }
+.att-ring::after {
+  background-image: conic-gradient(from -90deg,
+    var(--accent) 0 var(--arc), transparent var(--arc) 360deg);
+  transition: --arc 1100ms var(--ease);
+  filter: drop-shadow(0 0 10px var(--core-haze));
+}
+
+.att-ring-inner { position: relative; text-align: center; z-index: 1; }
+
+.att-ring-value {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: clamp(1.9rem, 5vw, 2.7rem);
+  font-weight: 650;
+  line-height: 1;
+  letter-spacing: -.03em;
+  font-variant-numeric: tabular-nums;
+}
+.att-ring-value.nodata {
+  font-size: 1rem; font-weight: 600; color: var(--text-dim);
+  letter-spacing: 0;
+}
+.att-ring-label {
+  display: block;
+  margin-top: .3rem;
+  font-family: var(--font-mono);
+  font-size: .66rem; font-weight: 700;
+  letter-spacing: .18em; text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+@keyframes ring-float {
+  0%, 100% { transform: translateY(-5px); }
+  50%      { transform: translateY(5px); }
+}
+
+/* The breakdown beside the ring: present, absent, late, unknown. Ordinary
+   status pills and figures, because that is what they are. */
+.att-breakdown {
+  list-style: none; margin: .9rem 0 0; padding: 0;
+  display: grid; gap: .4rem;
+}
+.att-breakdown li {
+  display: flex; align-items: baseline; gap: .5rem;
+  font-size: .84rem;
+  padding: .3rem .1rem;
+  border-bottom: 1px solid var(--border-faint);
+}
+.att-breakdown li:last-child { border-bottom: 0; }
+.att-breakdown .att-count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+
+
+/* =========================================================================
+   10. THE STUDENT CONSTELLATION
+   -------------------------------------------------------------------------
+   The register, as a formation of glass avatars in the room.
+
+   This is an ADDITION, not a replacement. The students table is still there,
+   still sortable, still paged, still the thing you use to find one person
+   among nine hundred - and a constellation is not. What the constellation is
+   good at is the shape of a room at a glance: who is here, who is not, and
+   where the gaps are.
+
+   Every avatar is a real <button>: in the tab order, operable by keyboard,
+   named by its own text. The orb is a span inside it. That is why this works
+   with a screen reader at all - the formation is a list of buttons that
+   happen to be arranged in a circle.
+   ========================================================================= */
+
+/* The frame the formation and its sweep plane share.
+
+   The formation itself is replaced wholesale on every poll, so the plane
+   cannot be a child of it - it would be destroyed with the avatars. This
+   wrapper holds both, and data-scanning on it is the pipeline state. */
+.constellation-wrap {
+  position: relative;
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.constellation {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .55rem;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 1.1rem .8rem 1.4rem;
+  perspective: 1100px;
+  perspective-origin: 50% 40%;
+  min-height: 150px;
+}
+
+.orb-figure {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: .3rem;
+  width: 86px;
+  padding: .5rem .25rem .4rem;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: center;
+  /* The formation. Each avatar is pushed back by its own row, so the far
+     rows really are further away. Set per element in the markup. */
+  transform: translateZ(calc(var(--row, 0) * -26px))
+             translateY(calc(var(--row, 0) * -2px));
+  transform-style: preserve-3d;
+  transition: transform var(--slow) var(--ease), opacity var(--slow) linear;
+  opacity: calc(1 - var(--row, 0) * .07);
+}
+
+/* Hovering brings this one person forward, out of the formation. The one
+   interaction the whole constellation is for. */
+@media (hover: hover) {
+  .orb-figure:hover {
+    transform: translateZ(64px) translateY(-4px);
+    opacity: 1;
+    z-index: 3;
+  }
+}
+.orb-figure:focus-visible {
+  transform: translateZ(64px) translateY(-4px);
+  opacity: 1;
+  z-index: 3;
+  outline-offset: 4px;
+}
+
+/* The avatar: a glass bead with a rim of light. The presence colour is on
+   the RIM and on the symbol, never as a fill - a solid green disc with a
+   name under it is a dot somebody has to decode, and a rim plus a symbol
+   plus a word is three signals. */
+.orb-bead {
+  position: relative;
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  display: grid; place-items: center;
+  border: 1px solid var(--orb-rim);
+  background-color: var(--orb);
+  background-image: radial-gradient(44% 40% at 32% 26%,
+                                    var(--glass-hi), transparent 70%);
+  box-shadow: inset 0 1px 0 var(--glass-edge);
+  font-family: var(--font-mono);
+  font-size: .68rem; font-weight: 700;
+  letter-spacing: .02em;
+  color: var(--text-muted);
+  transition: box-shadow var(--fast) var(--ease),
+              border-color var(--fast) var(--ease);
+}
+
+.orb-name {
+  display: block;
+  max-width: 100%;
+  font-size: .7rem; font-weight: 600;
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.orb-state {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: .58rem; font-weight: 700;
+  letter-spacing: .1em; text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* --- the functional half of this file ------------------------------------
+
+   Everything from here to the end of this section reports a STATE, so it is
+   allowed the status tokens - and is kept together, below the decoration, so
+   the separation is visible rather than asserted.
+
+   The four states are the ones the live endpoints actually report, mapped
+   onto the vocabulary the rest of the product already uses. None of them is
+   invented here and none of them is an attendance decision: a student who is
+   PRESENT in this formation is a student the presence timeline is reporting
+   as present right now. */
+
+.orb-figure[data-state="present"] .orb-bead {
+  border-color: var(--present);
+  box-shadow: 0 0 0 1px var(--present-bg), 0 0 18px var(--present-bg),
+              inset 0 1px 0 var(--glass-edge);
+  color: var(--present);
+}
+.orb-figure[data-state="present"] .orb-state { color: var(--present); }
+
+.orb-figure[data-state="late"] .orb-bead {
+  border-color: var(--late);
+  box-shadow: 0 0 0 1px var(--late-bg), inset 0 1px 0 var(--glass-edge);
+  color: var(--late);
+}
+.orb-figure[data-state="late"] .orb-state { color: var(--late); }
+
+.orb-figure[data-state="uncertain"] .orb-bead {
+  border-color: var(--partial);
+  box-shadow: 0 0 0 1px var(--partial-bg), inset 0 1px 0 var(--glass-edge);
+  color: var(--partial);
+}
+.orb-figure[data-state="uncertain"] .orb-state { color: var(--partial); }
+
+.orb-figure[data-state="absent"] .orb-bead {
+  border-color: var(--border);
+  color: var(--text-dim);
+  background-image: none;
+}
+.orb-figure[data-state="absent"] { opacity: calc(.62 - var(--row, 0) * .05); }
+.orb-figure[data-state="absent"] .orb-state { color: var(--absent); }
+
+.orb-figure[data-state="unknown"] .orb-bead {
+  border-color: var(--unknown);
+  border-style: dashed;
+  color: var(--unknown);
+}
+.orb-figure[data-state="unknown"] .orb-state { color: var(--unknown); }
+
+/* --- the register's three states -----------------------------------------
+
+   A different question from the five above, and drawn differently on purpose.
+
+   Presence asks "is this person in the room". The register asks "could the
+   camera name them if they were" - which is about face samples, not about
+   attendance, and the two must never be read as the same thing.
+
+   So ENROLLED takes the ACCENT rather than --present. Green on a student
+   avatar means present everywhere else in this product, and a green bead on
+   the Students page would be read as "here" by anybody who had seen the
+   overview stage. Cyan is this interface's colour for "the system knows
+   this", which is exactly what being enrolled means. */
+
+.orb-figure[data-state="enrolled"] .orb-bead {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-soft), 0 0 16px var(--accent-soft),
+              inset 0 1px 0 var(--glass-edge);
+  color: var(--accent);
+}
+.orb-figure[data-state="enrolled"] .orb-state { color: var(--accent); }
+
+/* On the register, no face stored. Amber: something to do, not something
+   wrong - and the word says which. */
+.orb-figure[data-state="pending"] .orb-bead {
+  border-color: var(--late);
+  border-style: dashed;
+  box-shadow: inset 0 1px 0 var(--glass-edge);
+  color: var(--late);
+  background-image: none;
+}
+.orb-figure[data-state="pending"] .orb-state { color: var(--late); }
+
+/* Left, transferred or graduated. Dimmed, because they are not expected at
+   anything - the same treatment the table gives an inactive row. */
+.orb-figure[data-state="inactive"] .orb-bead {
+  border-color: var(--unknown);
+  border-style: dotted;
+  color: var(--unknown);
+  background-image: none;
+}
+.orb-figure[data-state="inactive"] { opacity: calc(.6 - var(--row, 0) * .05); }
+.orb-figure[data-state="inactive"] .orb-state { color: var(--unknown); }
+
+/* The moment of detection. A single pulse of the rim, once, when a student
+   who was not present becomes present - this is the "holographic marker
+   appears" beat, and it is one 900ms animation rather than a permanent
+   glow, because a formation of fifty permanently pulsing beads is a
+   formation nobody can read. */
+.orb-figure[data-just-seen="true"] .orb-bead {
+  animation: orb-detect 900ms var(--ease) 1;
+}
+@keyframes orb-detect {
+  0%   { transform: scale(1); }
+  28%  { transform: scale(1.3); }
+  100% { transform: scale(1); }
+}
+
+
+/* =========================================================================
+   11. THE HOLOGRAPHIC MARKER
+   -------------------------------------------------------------------------
+   The label that floats above a detected person:
+
+       RAHUL
+       PRESENT
+
+   Used over the camera frame and over the assembly formation. It is a real
+   element with real text, positioned absolutely by percentage, so it scales
+   with whatever it is floating over and is read aloud as text.
+   ========================================================================= */
+
+.holo-marker {
+  position: absolute;
+  z-index: 2;
+  translate: -50% -100%;
+  padding: .3rem .55rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--holo-line);
+  background-color: var(--holo-bg);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: var(--shadow-sm);
+  text-align: left;
+  pointer-events: none;
+  animation: holo-in 420ms var(--ease) both;
+}
+
+/* The stem, from the label down to the person. */
+.holo-marker::after {
+  content: "";
+  position: absolute;
+  left: 50%; top: 100%;
+  width: 1px; height: 14px;
+  background-image: linear-gradient(var(--holo-line), transparent);
+}
+
+.holo-name {
+  display: block;
+  font-size: .74rem; font-weight: 650;
+  line-height: 1.2;
+  color: var(--text);
+  white-space: nowrap;
+}
+.holo-state {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: .6rem; font-weight: 700;
+  letter-spacing: .12em; text-transform: uppercase;
+  color: var(--holo);
+}
+
+@keyframes holo-in {
+  from { opacity: 0; translate: -50% calc(-100% + 8px); }
+}
+
+
+/* =========================================================================
+   12. THE CAMERA, AS A HOLOGRAM
+   -------------------------------------------------------------------------
+   The live frame inside a floating glass frame, with the telemetry around
+   its edge and a scanning line across it.
+
+   THE FRAME ITSELF IS NEVER GLASS. .holo-cam-stage keeps an opaque ground
+   and no blur, for the reason the existing live console already gives: a
+   video frame composited through a translucent panel is a video frame
+   somebody is squinting at. The glass is the chrome AROUND the picture.
+   ========================================================================= */
+
+.holo-cam {
+  position: relative;
+  padding: .55rem;
+  border-radius: var(--radius-lg);
+}
+
+.holo-cam-stage {
+  position: relative;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background-color: var(--bg-deep);
+  border: 1px solid var(--border-strong);
+  min-height: 190px;
+}
+
+.holo-cam-stage img,
+.holo-cam-stage video {
+  display: block;
+  width: 100%; height: auto;
+}
+
+/* Four corner brackets. Drawn with borders on two pseudo-elements and a
+   gradient-free pair of spans, so there is no image and no mask. */
+.holo-cam-corner {
+  position: absolute;
+  width: 18px; height: 18px;
+  border: 1px solid var(--accent);
+  pointer-events: none;
+  opacity: .8;
+}
+.holo-cam-corner-tl { top: 8px; left: 8px; border-right: 0; border-bottom: 0; }
+.holo-cam-corner-tr { top: 8px; right: 8px; border-left: 0; border-bottom: 0; }
+.holo-cam-corner-bl { bottom: 8px; left: 8px; border-right: 0; border-top: 0; }
+.holo-cam-corner-br { bottom: 8px; right: 8px; border-left: 0; border-top: 0; }
+
+/* The scanning line. One translucent band travelling down the frame, at a
+   low enough alpha that it never obscures a face. Only while the pipeline is
+   actually running - a scanline over a still placeholder is a lie about what
+   the system is doing. */
+.holo-cam[data-live="true"] .holo-cam-scan {
+  position: absolute;
+  left: 0; right: 0; top: 0;
+  height: 28%;
+  pointer-events: none;
+  background-image: linear-gradient(transparent, var(--scan) 70%, transparent);
+  animation: cam-scan 3.4s linear infinite;
+}
+@keyframes cam-scan {
+  from { transform: translateY(-40%); }
+  to   { transform: translateY(380%); }
+}
+
+/* The telemetry rail under the frame: LIVE, CAMERA, FPS, STUDENTS,
+   AUTHENTICITY. Values come from /api/live/status and are set in a
+   monospace figure on an opaque strip. */
+.holo-cam-rail {
+  list-style: none;
+  display: grid;
+  gap: .4rem;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  margin: .6rem 0 0; padding: 0;
+}
+.holo-cam-cell {
+  padding: .4rem .55rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-faint);
+  background-color: var(--surface);
+}
+.holo-cam-cell .holo-cam-key {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: .6rem; font-weight: 700;
+  letter-spacing: .13em; text-transform: uppercase;
+  color: var(--text-dim);
+}
+.holo-cam-cell .holo-cam-val {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: .95rem; font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+
+/* =========================================================================
+   13. THE SCAN PLANE
+   -------------------------------------------------------------------------
+   The recognition sweep over the room: one transparent plane of light that
+   travels across the formation while identities are being resolved, and
+   stops when they are.
+
+   It is driven by a data attribute on the container rather than by a class
+   that JavaScript adds and forgets, so it cannot be left running: the
+   attribute is the pipeline state, and when the pipeline stops the plane
+   stops with it.
+   ========================================================================= */
+
+.scan-plane {
+  position: absolute; inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: inherit;
+}
+.scan-plane::before {
+  content: "";
+  position: absolute;
+  top: -20%; bottom: -20%;
+  width: 34%;
+  background-image: linear-gradient(90deg, transparent,
+                                    var(--scan) 45%, var(--scan) 55%,
+                                    transparent);
+  opacity: 0;
+}
+[data-scanning="true"] > .scan-plane::before {
+  opacity: 1;
+  animation: scan-sweep 4.2s var(--ease) infinite;
+}
+@keyframes scan-sweep {
+  from { transform: translateX(-120%) skewX(-8deg); }
+  to   { transform: translateX(330%) skewX(-8deg); }
+}
+
+
+/* =========================================================================
+   14. THE SPATIAL TIMELINE
+   -------------------------------------------------------------------------
+   A session, as a lit path through the room rather than a column of times.
+
+   Events are glass nodes on a spine. The spine is a gradient, the nodes are
+   buttons, and the whole thing scrolls horizontally on a narrow screen -
+   which is the honest version of "drag along the timeline": a native scroll
+   container is draggable, flickable, keyboard-reachable and does not need a
+   pointer-events state machine to work.
+   ========================================================================= */
+
+.spine {
+  position: relative;
+  display: flex;
+  gap: 1.5rem;
+  align-items: flex-start;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  padding: 2.1rem .4rem 1rem;
+}
+
+/* The path. One hairline with a travelling highlight on it. */
+.spine::before {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: 2.55rem;
+  height: 1px;
+  background-image: linear-gradient(90deg, transparent, var(--glass-rim) 8%,
+                                    var(--glass-rim) 92%, transparent);
+}
+
+.spine-node {
+  position: relative;
+  flex: 0 0 auto;
+  width: 148px;
+  scroll-snap-align: center;
+  display: grid;
+  justify-items: center;
+  gap: .4rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: center;
+  transition: transform var(--slow) var(--ease);
+}
+
+/* The bead on the path. */
+.spine-bead {
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  border: 1px solid var(--glass-line);
+  background-color: var(--glass-near);
+  box-shadow: inset 0 1px 0 var(--glass-edge);
+}
+.spine-node[data-done="true"] .spine-bead {
+  border-color: var(--accent);
+  background-color: var(--accent);
+  box-shadow: var(--glow-soft);
+}
+.spine-node[data-current="true"] .spine-bead {
+  border-color: var(--accent);
+  animation: spine-pulse 2.2s var(--ease) infinite;
+}
+@keyframes spine-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--accent-soft); }
+  50%      { box-shadow: 0 0 0 7px var(--accent-soft); }
+}
+
+.spine-card {
+  width: 100%;
+  padding: .5rem .55rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--glass-line);
+  background-color: var(--glass-mid);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--slow) var(--ease),
+              background-color var(--fast) var(--ease);
+}
+@media (hover: hover) {
+  .spine-node:hover .spine-card { transform: translateY(-5px); background-color: var(--glass-near); }
+}
+.spine-node:focus-visible .spine-card { transform: translateY(-5px); }
+
+.spine-label {
+  display: block;
+  font-size: .72rem; font-weight: 650;
+  line-height: 1.2;
+}
+.spine-time {
+  display: block;
+  margin-top: .15rem;
+  font-family: var(--font-mono);
+  font-size: .66rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.spine-node[data-done="false"] .spine-label { color: var(--text-dim); }
+
+
+/* =========================================================================
+   15. ANALYTICS, IN A GLASS CUBE
+   -------------------------------------------------------------------------
+   A bar chart standing on a floor inside a transparent box, and hovering a
+   bar brings that bar towards the reader.
+
+   The chart REMAINS A CHART: it keeps role="img" and the aria-label with the
+   whole series in it that the existing barChart() already produces, and the
+   figure above each bar is plain text on no background. The cube is a room
+   around a chart, not a replacement for one.
+   ========================================================================= */
+
+.glass-cube {
+  position: relative;
+  padding: 1.1rem 1.1rem .7rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--glass-line);
+  background-color: var(--glass-far);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: var(--shadow), inset 0 1px 0 var(--glass-edge);
+  perspective: 980px;
+  perspective-origin: 50% 70%;
+  overflow: hidden;
+}
+
+/* The floor of the cube, so the bars stand on something. */
+.glass-cube::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 34%;
+  pointer-events: none;
+  background-image:
+    linear-gradient(transparent, var(--stage)),
+    repeating-linear-gradient(90deg, var(--stage-line) 0 1px, transparent 1px 9%);
+  transform: perspective(400px) rotateX(70deg);
+  transform-origin: 50% 100%;
+  opacity: .5;
+}
+
+.cube-bars {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-end;
+  gap: .5rem;
+  min-height: 190px;
+  transform-style: preserve-3d;
+  rotate: y calc(var(--mx) * 1.6deg);
+  transition: rotate 520ms var(--ease);
+}
+
+.cube-bar {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 14px;
+  display: grid;
+  align-content: end;
+  justify-items: center;
+  gap: .3rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  transform-style: preserve-3d;
+  transition: transform var(--slow) var(--ease);
+}
+
+/* The bar itself. Height is set from the data in the markup. */
+.cube-bar-fill {
+  width: 100%;
+  height: var(--h, 0%);
+  min-height: 2px;
+  border-radius: 4px 4px 0 0;
+  border: 1px solid var(--glass-rim);
+  border-bottom: 0;
+  background-image: linear-gradient(var(--accent), var(--core-haze));
+  box-shadow: inset 0 1px 0 var(--glass-edge);
+  transition: height 900ms var(--ease), filter var(--fast) linear;
+}
+
+.cube-bar-value {
+  font-family: var(--font-mono);
+  font-size: .7rem; font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.cube-bar-key {
+  font-size: .64rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* Hovering lifts the data point out of the chart, towards the reader. */
+@media (hover: hover) {
+  .cube-bar:hover { transform: translateZ(42px); z-index: 2; }
+  .cube-bar:hover .cube-bar-fill { filter: brightness(1.18); }
+}
+.cube-bar:focus-visible { transform: translateZ(42px); z-index: 2; }
+
+
+/* =========================================================================
+   16. THE CAMERA MODEL, AND THE AUTHENTICITY SPHERE
+   -------------------------------------------------------------------------
+   Camera health as a small 3D camera with its telemetry floating around it,
+   and authenticity as a sphere whose state is a word.
+
+   Both are drawn in CSS 3D - six faces of a box, and a rotating rim - rather
+   than on a canvas, because both are small, both are static most of the
+   time, and a canvas that exists to draw a cuboid is a canvas that could
+   have been a div.
+   ========================================================================= */
+
+.cam-model-wrap {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(150px, 220px) minmax(0, 1fr);
+  align-items: center;
+}
+
+.cam-model {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  display: grid; place-items: center;
+  perspective: 760px;
+}
+
+.cam-body {
+  position: relative;
+  width: 54%; height: 36%;
+  transform-style: preserve-3d;
+  animation: cam-turn 24s linear infinite;
+}
+.cam-face {
+  position: absolute; inset: 0;
+  border: 1px solid var(--glass-line);
+  background-color: var(--glass-mid);
+  box-shadow: inset 0 1px 0 var(--glass-edge);
+}
+/* Six faces of a box, each pushed out by half its own dimension. The depth
+   is a custom property so one number controls the whole model. */
+.cam-model { --cam-d: 34px; }
+.cam-face-front  { transform: translateZ(var(--cam-d)); }
+.cam-face-back   { transform: translateZ(calc(var(--cam-d) * -1)) rotateY(180deg); }
+.cam-face-right  { width: calc(var(--cam-d) * 2); left: auto; right: 0;
+                   transform: rotateY(90deg) translateZ(var(--cam-d)); }
+.cam-face-left   { width: calc(var(--cam-d) * 2);
+                   transform: rotateY(-90deg) translateZ(var(--cam-d)); }
+.cam-face-top    { height: calc(var(--cam-d) * 2); bottom: auto;
+                   transform: rotateX(90deg) translateZ(var(--cam-d)); }
+.cam-face-bottom { height: calc(var(--cam-d) * 2); top: auto;
+                   transform: rotateX(-90deg) translateZ(var(--cam-d)); }
+
+/* The lens: a ring on the front face, and a beam out of it. */
+.cam-lens {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 34%; aspect-ratio: 1;
+  translate: -50% -50%;
+  border-radius: 50%;
+  border: 1px solid var(--accent);
+  background-image: radial-gradient(60% 60% at 36% 32%,
+                                    var(--glass-hi), transparent 70%);
+}
+.cam-model[data-state="active"] .cam-lens { box-shadow: var(--glow-soft); }
+
+@keyframes cam-turn {
+  from { transform: rotateX(-14deg) rotateY(-28deg); }
+  50%  { transform: rotateX(-14deg) rotateY(28deg); }
+  to   { transform: rotateX(-14deg) rotateY(-28deg); }
+}
+
+/* The authenticity sphere. A glass bead with a rotating rim; the STATE is
+   the word underneath it, and the rim colour is the third signal. */
+.auth-sphere {
+  position: relative;
+  width: min(100%, 150px);
+  aspect-ratio: 1;
+  margin: 0 auto;
+  border-radius: 50%;
+  border: 1px solid var(--glass-line);
+  background-color: var(--glass-mid);
+  background-image: radial-gradient(42% 38% at 32% 26%,
+                                    var(--glass-hi), transparent 68%);
+  box-shadow: inset 0 0 34px var(--core-haze);
+}
+.auth-sphere::after {
+  content: "";
+  position: absolute; inset: -5px;
+  border-radius: 50%;
+  border: 1px solid var(--glass-rim);
+  border-top-color: var(--accent);
+  animation: sphere-rim 7s linear infinite;
+}
+@keyframes sphere-rim { to { rotate: 360deg; } }
+
+.auth-sphere-word {
+  position: absolute;
+  left: 50%; top: 50%;
+  translate: -50% -50%;
+  font-family: var(--font-mono);
+  font-size: .76rem; font-weight: 700;
+  letter-spacing: .14em; text-transform: uppercase;
+  text-align: center;
+}
+
+
+/* =========================================================================
+   17. ASSEMBLY MODE
+   -------------------------------------------------------------------------
+   A whole school in one room.
+
+   Assembly Mode is a VIEW onto the existing machinery and nothing more. It
+   starts a session through /api/live/start, reads /api/live/status and
+   /api/live/presence on the same one-second clock the live console uses,
+   ends through /api/live/stop, and the attendance it produces is written by
+   the same rules and lands in the same sessions list. There is no second
+   attendance system behind this screen, and the tests check that there is
+   not: the only endpoints assembly.js may call are the ones the live
+   console already calls.
+
+   What is different is the ROOM. A classroom is thirty people in rows you
+   can read; an assembly is five hundred, and the useful view of five
+   hundred is a formation seen from the stage - where the shape of the gaps
+   is the information.
+   ========================================================================= */
+
+.assembly {
+  position: relative;
+  display: grid;
+  gap: 1rem;
+}
+
+/* --- the hall ------------------------------------------------------------
+   A floor in perspective with the stage at the far end and the formation in
+   front of it. One perspective container: the stage, the rows and the floor
+   all share it, which is what makes them look like one space. */
+
+.hall {
+  position: relative;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--glass-line);
+  background-color: var(--glass-far);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: var(--shadow), inset 0 1px 0 var(--glass-edge);
+  padding: 1.2rem 1rem 1.6rem;
+  overflow: hidden;
+  perspective: 1250px;
+  perspective-origin: 50% 24%;
+  min-height: 330px;
+}
+
+/* The floor of the hall, converging towards the stage. */
+.hall-floor {
+  position: absolute;
+  left: -14%; right: -14%; bottom: -6%;
+  height: 76%;
+  pointer-events: none;
+  background-image:
+    linear-gradient(transparent, var(--stage) 88%),
+    repeating-linear-gradient(90deg, var(--stage-line) 0 1px, transparent 1px 6%),
+    repeating-linear-gradient(var(--stage-line) 0 1px, transparent 1px 14%);
+  transform: perspective(700px) rotateX(71deg);
+  transform-origin: 50% 100%;
+  opacity: .45;
+  mask-image: linear-gradient(transparent, #000 40%, #000);
+  -webkit-mask-image: linear-gradient(transparent, #000 40%, #000);
+}
+
+.hall-inner {
+  position: relative;
+  z-index: 1;
+  transform-style: preserve-3d;
+  rotate: y calc(var(--mx) * 1.3deg);
+  transition: rotate 520ms var(--ease);
+}
+
+/* The stage, at the far end and pushed back. */
+.hall-stage {
+  width: min(62%, 420px);
+  margin: 0 auto 1.3rem;
+  text-align: center;
+  transform: translateZ(-150px) rotateX(5deg);
+  transform-style: preserve-3d;
+}
+.hall-stage-plate {
+  padding: .55rem .8rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--glass-line);
+  background-color: var(--glass-mid);
+  box-shadow: var(--shadow-sm), inset 0 1px 0 var(--glass-edge);
+}
+.hall-stage-word {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: .64rem; font-weight: 700;
+  letter-spacing: .22em; text-transform: uppercase;
+  color: var(--text-dim);
+}
+.hall-stage-who {
+  display: block;
+  font-size: .86rem; font-weight: 650;
+}
+
+/* The rows. Each row is pushed further back and scaled down by its index, so
+   the formation recedes; the indices come from the real student count, which
+   is why a hall of twelve and a hall of six hundred both look like halls. */
+.hall-rows {
+  display: grid;
+  gap: .5rem;
+  transform-style: preserve-3d;
+}
+.hall-row {
+  display: flex;
+  justify-content: center;
+  gap: .45rem;
+  flex-wrap: nowrap;
+  transform: translateZ(calc(var(--depth, 0) * -34px))
+             translateY(calc(var(--depth, 0) * -3px));
+  transform-style: preserve-3d;
+  opacity: calc(1 - var(--depth, 0) * .055);
+}
+
+/* One person in the formation. Smaller than a constellation avatar, because
+   there are a great many more of them, and still a real button. */
+.hall-seat {
+  position: relative;
+  flex: 0 0 auto;
+  width: 22px; height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--orb-rim);
+  background-color: var(--orb);
+  background-image: radial-gradient(46% 42% at 32% 26%,
+                                    var(--glass-hi), transparent 72%);
+  box-shadow: inset 0 1px 0 var(--glass-edge);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0;
+  transition: transform var(--slow) var(--ease),
+              border-color var(--fast) var(--ease),
+              box-shadow var(--fast) var(--ease);
+}
+
+@media (hover: hover) {
+  .hall-seat:hover { transform: scale(1.5) translateZ(30px); z-index: 4; }
+}
+.hall-seat:focus-visible { transform: scale(1.5) translateZ(30px); z-index: 4; }
+
+/* The marker above a seat, on hover or focus. Same holographic label as the
+   camera uses, so a detected person looks the same wherever you meet them. */
+.hall-seat .holo-marker {
+  left: 50%; top: -6px;
+  opacity: 0;
+  transition: opacity var(--fast) linear;
+  animation: none;
+}
+.hall-seat:hover .holo-marker,
+.hall-seat:focus-visible .holo-marker { opacity: 1; }
+
+/* --- the functional half: the four states a seat can be in ---------------
+   The same vocabulary as the constellation, for the same reason: a person is
+   not drawn one way in a classroom and another way in an assembly. */
+
+.hall-seat[data-state="present"] {
+  border-color: var(--present);
+  box-shadow: 0 0 10px var(--present-bg), inset 0 1px 0 var(--glass-edge);
+}
+.hall-seat[data-state="late"] {
+  border-color: var(--late);
+  box-shadow: 0 0 8px var(--late-bg), inset 0 1px 0 var(--glass-edge);
+}
+.hall-seat[data-state="uncertain"] {
+  border-color: var(--partial);
+  border-style: dashed;
+}
+.hall-seat[data-state="absent"] {
+  border-color: var(--border);
+  background-image: none;
+  opacity: .5;
+}
+.hall-seat[data-state="unknown"] {
+  border-color: var(--unknown);
+  border-style: dotted;
+}
+
+/* The beat when somebody is recognised. */
+.hall-seat[data-just-seen="true"] {
+  animation: orb-detect 900ms var(--ease) 1;
+}
+
+/* --- the status panel over the hall --------------------------------------
+   ASSEMBLY MODE, the live dot, and the six figures. A floating pane, and the
+   figures inside it are .card modules on opaque surfaces. */
+
+.assembly-banner {
+  display: flex;
+  align-items: center;
+  gap: .8rem;
+  flex-wrap: wrap;
+  padding: .8rem 1rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--glass-line);
+  background-color: var(--glass-mid);
+  backdrop-filter: blur(var(--blur));
+  -webkit-backdrop-filter: blur(var(--blur));
+  box-shadow: var(--shadow), inset 0 1px 0 var(--glass-edge);
+}
+.assembly-banner h2 {
+  margin: 0;
+  font-size: 1.02rem;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+.assembly-banner .assembly-when {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: .74rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- the controls --------------------------------------------------------
+   Start, pause, resume, end, finalise, delete. A floating glass strip, and
+   the two destructive ones are marked as such and confirm before they act -
+   which is the existing dialog machinery, not a new one. */
+
+.assembly-controls {
+  display: flex;
+  gap: .5rem;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: .7rem .85rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--glass-line);
+  background-color: var(--glass-near);
+  backdrop-filter: blur(var(--blur));
+  -webkit-backdrop-filter: blur(var(--blur));
+  box-shadow: var(--shadow);
+}
+.assembly-controls .assembly-control-note {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: .78rem;
+  color: var(--text-muted);
+}
+
+/* --- completion ----------------------------------------------------------
+   The formation settles into a summary. The transition is one animation on
+   the hall: it recedes and fades, and the summary rises in its place. */
+
+.hall[data-settling="true"] .hall-inner {
+  animation: hall-settle 900ms var(--ease) forwards;
+}
+@keyframes hall-settle {
+  to { opacity: 0; transform: translateZ(-220px) translateY(-14px); }
+}
+
+.assembly-summary {
+  animation: summary-rise 700ms var(--ease) both;
+}
+@keyframes summary-rise {
+  from { opacity: 0; transform: translateY(18px); }
+}
+
+.assembly-summary-head {
+  display: grid;
+  gap: .2rem;
+  margin-bottom: .9rem;
+}
+.assembly-summary-head .assembly-done {
+  font-family: var(--font-mono);
+  font-size: .68rem; font-weight: 700;
+  letter-spacing: .2em; text-transform: uppercase;
+  color: var(--accent);
+}
+
+
+/* =========================================================================
+   18. MOVING BETWEEN VIEWS
+   -------------------------------------------------------------------------
+   A view does not appear, it arrives: the one being left falls back into the
+   room and the one being opened comes forward out of the glass.
+
+   Two short animations, and they are SHORT on purpose. A 900ms transition
+   between two pages of a tool somebody uses two hundred times a day is six
+   minutes a day of waiting for a camera move. These are 320ms and 420ms,
+   which is long enough to read as movement and short enough that nobody
+   waits.
+
+   Both are one-shot animations on the view element, which means the browser
+   runs them and cleans up after itself - there is no class to remove and
+   nothing to leave behind if the next navigation happens mid-flight.
+   ========================================================================= */
+
+.view:not([hidden]).view-arriving {
+  animation: view-forward 420ms var(--ease) both;
+}
+@keyframes view-forward {
+  from { opacity: 0; transform: perspective(1200px) translateZ(-90px) scale(.985); }
+  to   { opacity: 1; transform: none; }
+}
+
+.view-ghost {
+  position: fixed;
+  inset: var(--topbar-h) 0 0 var(--sidebar-w);
+  z-index: 40;
+  pointer-events: none;
+  border-radius: var(--radius-lg);
+  background-color: var(--glass-far);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  animation: view-back 320ms var(--ease) forwards;
+}
+@keyframes view-back {
+  from { opacity: .9; transform: scale(1); }
+  to   { opacity: 0; transform: scale(.96); }
+}
+
+
+/* =========================================================================
+   19. 2.5D: THE NARROW SCREEN
+   -------------------------------------------------------------------------
+   The room becomes a stack.
+
+   What is kept: the glass, the three depths, the edge highlights, the
+   arrival animations, the holographic markers, the attendance ring. All of
+   it is flat compositing and costs nothing.
+
+   What goes: the perspective containers, the per-pane rotations, the orbit
+   navigation, the floor, the canvas-drawn background and the parallax -
+   every one of which is either a per-frame cost or an effect that needs a
+   pointer that hovers. spatial.js checks the same breakpoint and does not
+   start the background loop at all below it, because a stylesheet cannot
+   stop a requestAnimationFrame.
+   ========================================================================= */
+
+@media (max-width: 1080px) {
+  .stage {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "top" "core" "left" "right" "bottom";
+    perspective: none;
+    rotate: none;
+  }
+  .stage > * { transform: none; }
+
+  .entry {
+    grid-template-columns: minmax(0, 1fr);
+    align-content: center;
+    gap: 1.2rem;
+    text-align: left;
+  }
+  .entry-stage {
+    grid-column: 1;
+    grid-row: 1;
+    width: min(74vw, 300px);
+    justify-self: center;
+  }
+  .entry-copy { grid-column: 1; grid-row: 2; max-width: none; }
+
+  .cam-model-wrap { grid-template-columns: minmax(0, 1fr); }
+  .deep-floor { display: none; }
+}
+
+@media (max-width: 760px) {
+  .constellation { perspective: none; }
+  .orb-figure { transform: none; opacity: 1; }
+  .orb-figure[data-state="absent"] { opacity: .62; }
+
+  .hall { perspective: none; min-height: 0; padding: 1rem .7rem 1.2rem; }
+  .hall-floor { display: none; }
+  .hall-inner { rotate: none; }
+  .hall-stage { transform: none; width: 100%; margin-bottom: 1rem; }
+  .hall-row { transform: none; opacity: 1; flex-wrap: wrap; }
+
+  .glass-cube { perspective: none; }
+  .cube-bars { rotate: none; }
+
+  .spine { gap: 1rem; padding-top: 1.9rem; }
+  .spine-node { width: 124px; }
+}
+
+@media (max-width: 600px) {
+  /* The constellation stops being a formation and becomes a wrapped grid of
+     avatars, which is what it degrades to honestly: still every student,
+     still the states, no depth to read. */
+  .constellation { gap: .4rem; padding: .8rem .3rem 1rem; }
+  .orb-figure { width: 72px; }
+  .orb-bead { width: 34px; height: 34px; }
+  .entry { padding: 1.1rem; }
+  .entry-stage { width: min(68vw, 240px); }
+}
+
+/* A device with no hovering pointer gets no hover-driven depth at all - not
+   a hover effect that latches on first touch, which is what happens when a
+   :hover rule meets a touchscreen. */
+@media (hover: none) {
+  .cursor-dot, .cursor-ring { display: none; }
+  .orb-figure, .hall-seat, .cube-bar { transition: none; }
+}
+
+
+/* =========================================================================
+   20. MOTION, SWITCHED OFF
+   -------------------------------------------------------------------------
+   Every animation in this file, by name.
+
+   By name and not by duration, for the reason the existing stylesheet gives:
+   an infinite animation with its duration overridden to 0.001ms is an
+   infinite animation still running, sixty times a second, forever. The
+   blanket override in styles.css already applies here; this block is the
+   half that actually stops things.
+
+   What is kept is everything static. A sphere that does not turn is still a
+   sphere; glass that does not drift is still glass; a ring that shows 92%
+   without sweeping to it still shows 92%. Nobody who asks for less motion
+   is given less information.
+   ========================================================================= */
+
+@media (prefers-reduced-motion: reduce) {
+  /* The background and the entry scene. spatial.js also checks the
+     preference before it starts either loop, so the canvas is a single still
+     frame rather than a stopped animation. */
+  .deep { transition: none; transform: none; }
+  .deep-floor { transform: perspective(620px) rotateX(74deg); }
+
+  .entry-ring-a, .entry-ring-b, .entry-ring-c { animation: none; }
+  .entry:not([hidden]) .entry-copy,
+  .entry:not([hidden]) .entry-stage { animation: none; }
+  .entry.entry-leaving { animation: none; opacity: 0; }
+  .entry-stage, .entry-copy { transition: none; transform: none; }
+
+  /* The cursor stops trailing. It is still drawn and still changes state -
+     the state is information - but it is pinned to the pointer. */
+  .cursor-ring { transition: none; }
+
+  /* Everything that turns, pulses, sweeps, floats or bobs. */
+  .att-ring { animation: none; }
+  .att-ring::after { transition: none; }
+  /* The rail. The iris stops turning - a ring that does not turn is still a
+     ring - and the width, the hover step and the tooltip all arrive at once
+     instead of easing. Nothing in the rail becomes less readable: every
+     label, every state and every tooltip is still there. */
+  .rail-brand .brand-mark::before { animation: none; }
+  .rail-collapse-icon, .nav-item, .nav-item .nav-icon { transition: none; }
+  .nav-item:hover, .nav-item:focus-visible,
+  .nav-item[aria-current="page"] { transform: none; }
+  .nav-item:hover .nav-icon { transform: none; }
+  .app-shell { transition: none; }
+  body[data-rail="collapsed"] .nav-label { transition: none; }
+  /* The holographic marker still appears - it is a name and a word somebody
+     needs - it simply appears rather than sliding up into place. */
+  .holo-marker { animation: none; }
+  .holo-cam[data-live="true"] .holo-cam-scan { animation: none; display: none; }
+  [data-scanning="true"] > .scan-plane::before { animation: none; opacity: 0; }
+  .spine-node[data-current="true"] .spine-bead { animation: none; }
+  .cam-body { animation: none; transform: rotateX(-14deg) rotateY(-24deg); }
+  .auth-sphere::after { animation: none; }
+  .orb-figure[data-just-seen="true"] .orb-bead,
+  .hall-seat[data-just-seen="true"] { animation: none; }
+  .hall[data-settling="true"] .hall-inner { animation: none; }
+  .assembly-summary { animation: none; }
+
+  /* The view transitions. The view still changes; it simply does so at
+     once, which is what a tab has always done. */
+  .view:not([hidden]).view-arriving { animation: none; }
+  .view-ghost { animation: none; display: none; }
+
+  /* The room stops leaning, and every surface stops reaching. */
+  .stage { rotate: none; transition: none; }
+  .stage > *, .pane { transition: none; }
+  .pane[data-reach="true"]:hover,
+  .pane[data-reach="true"]:focus-within,
+  .stage-left:hover, .stage-right:hover,
+  .stage-top:hover, .stage-bottom:hover,
+  .stage-left:focus-within, .stage-right:focus-within,
+  .orb-figure:hover, .orb-figure:focus-visible,
+  .hall-seat:hover, .hall-seat:focus-visible,
+  .cube-bar:hover, .cube-bar:focus-visible,
+  .spine-node:hover .spine-card, .spine-node:focus-visible .spine-card {
+    transform: none;
+  }
+  .constellation, .hall, .glass-cube, .stage { perspective: none; }
+  .cube-bars, .hall-inner { rotate: none; }
+  .cube-bar-fill { transition: none; }
+}
+
+
+/* =========================================================================
+   21. PRINT
+   -------------------------------------------------------------------------
+   None of this exists on paper.
+
+   A printed register is a document somebody files. Every effect in this file
+   is either invisible on paper or actively harmful on it: a translucent pane
+   prints as a grey wash behind the figures, and a perspective transform
+   prints as a trapezoid. So the whole spatial layer is removed and what is
+   left is the document styles.css already prints.
+   ========================================================================= */
+
+@media print {
+  .deep, .deep-fog, .deep-floor,
+  .cursor-dot, .cursor-ring,
+  .entry, .view-ghost,
+  .holo-cam-scan, .scan-plane,
+  .assembly-controls { display: none !important; }
+
+  .pane, .glass-cube, .hall, .assembly-banner, .spine-card,
+  .holo-cam, .auth-sphere {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background-color: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+    border-color: #999 !important;
+  }
+
+  .stage, .constellation, .hall, .glass-cube, .cam-model {
+    perspective: none !important;
+    display: block !important;
+  }
+  .stage > *, .hall-row, .hall-stage, .orb-figure, .cube-bar, .hall-inner {
+    transform: none !important;
+    opacity: 1 !important;
+    rotate: none !important;
+  }
+
+  /* The horizontal timeline becomes a list, because paper does not scroll. */
+  .spine {
+    display: block;
+    overflow: visible;
+    padding: 0;
+  }
+  .spine::before { display: none; }
+  .spine-node { width: auto; display: block; margin-bottom: .4rem; }
+}

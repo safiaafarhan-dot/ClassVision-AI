@@ -1,0 +1,20 @@
+# ClassVision AI - Python dependencies
+# Install with:  pip install -r requirements.txt
+#
+# Steps 1 and 2 need no packages beyond these three. The Step 2 face detector
+# (YuNet) is built into OpenCV, so it adds no dependency - but its model file
+# must be downloaded once:
+#
+#     python ai/download_models.py
+
+numpy==2.2.6
+opencv-python==5.0.0.93
+pandas==2.3.3
+
+# Step 7 - local dashboard backend. SQLite comes from the standard library,
+# so the only additions are the web layer itself.
+fastapi==0.141.1
+uvicorn==0.53.0
+
+# Used by fastapi.testclient in the Step 7 test suite.
+httpx==0.28.1

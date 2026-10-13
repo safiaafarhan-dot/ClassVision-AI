@@ -1,0 +1,3529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClassVision AI — Computer Vision Operations Center</title>
+<link rel="stylesheet" href="/static/styles.css">
+<!-- The tab icon. Every browser asks for /favicon.ico on every page
+     load, this appliance had no such file, and the 404 was logged as an
+     error on a page where nothing was wrong. Served from /static like
+     everything else here: no data URI, no second host. -->
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<!-- The spatial layer: depth, glass, the 3D stage and Assembly Mode.
+     Second on purpose - it reads the palette styles.css defines and
+     overrides nothing a reader has to read. Remove this one line and
+     the console is the flat, fully working tool it was. -->
+<link rel="stylesheet" href="/static/spatial.css">
+
+<!-- The saved theme, applied before the first paint.
+
+     This is the one piece of script in the document rather than in app.js, and
+     it has to be: app.js is loaded at the end of the body, so by the time it
+     runs the browser has already painted. A teacher who chose Light on a
+     machine set to Dark would see the dark palette flash and flip, on every
+     single page load.
+
+     Deliberately tiny and deliberately without dependencies - it is the same
+     three states applyTheme() in app.js uses, and app.js re-applies the value
+     when it loads, so this cannot drift into being the authority on anything.
+     Wrapped in try/catch because localStorage throws rather than returning
+     nothing in a private window on some browsers, and a theme that cannot be
+     read must not stop the page loading. -->
+<script>
+  try {
+    var savedTheme = window.localStorage.getItem("classvision-theme");
+    if (savedTheme === "light" || savedTheme === "dark") {
+      document.documentElement.setAttribute("data-theme", savedTheme);
+    }
+  } catch (ignored) { /* no stored theme; the media queries decide */ }
+</script>
+</head>
+<body>
+
+<a class="skip-link" href="#main">Skip to main content</a>
+
+<!-- ─────────────── THE THRESHOLD ───────────────
+
+     What a teacher sees first, after signing in and before the console.
+
+     A miniature classroom turning inside a glass sphere, with the product's
+     name beside it and one way in. It is NOT a splash screen: the dashboard
+     loads behind it the whole time it is up, the button holds focus so Enter
+     crosses it immediately, Escape does the same, and clicking the scene does
+     too. Nobody with a class waiting is made to watch an animation.
+
+     It holds no figure. Nothing has been fetched when it appears, so there is
+     nothing to report and this screen reports nothing. -->
+<section id="entry-screen" class="entry" hidden aria-labelledby="entry-title">
+
+  <!-- The scene. Drawn by spatial.js on a 2D canvas with ordinary
+       trigonometry: no WebGL, no three.js, no CDN, so it works on a classroom
+       machine with no network. Decoration, and marked as such, so a screen
+       reader walks straight past it to the copy. -->
+  <div class="entry-stage" aria-hidden="true">
+    <canvas id="entry-canvas"></canvas>
+    <div class="entry-shell"></div>
+    <div class="entry-rings">
+      <span class="entry-ring entry-ring-a"></span>
+      <span class="entry-ring entry-ring-b"></span>
+      <span class="entry-ring entry-ring-c"></span>
+    </div>
+  </div>
+
+  <div class="entry-copy">
+    <p class="entry-eyebrow">AI classroom intelligence</p>
+    <h1 id="entry-title" class="entry-title">ClassVision <em>AI</em></h1>
+    <p class="entry-lede">
+      A camera, a pipeline and the attendance decision, running on the machine
+      in the room. What you are looking at is the shape of a classroom: the
+      people in it, what the system can see, and what it has decided.
+    </p>
+
+    <ul class="entry-points">
+      <li>
+        <span class="entry-tick" aria-hidden="true">&#10003;</span>
+        <span>
+          <b>Identity and authenticity stay separate</b>
+          Being recognised is not being live, and neither one is attendance.
+        </span>
+      </li>
+      <li>
+        <span class="entry-tick" aria-hidden="true">&#10003;</span>
+        <span>
+          <b>Nothing is recorded</b>
+          Each frame replaces the last. No capture is written to disk.
+        </span>
+      </li>
+      <li>
+        <span class="entry-tick" aria-hidden="true">&#10003;</span>
+        <span>
+          <b>Decided on this machine</b>
+          Detection, recognition and the attendance rules all run locally.
+        </span>
+      </li>
+    </ul>
+
+    <div class="entry-actions">
+      <button type="button" class="btn btn-primary entry-enter"
+              id="entry-enter">Enter classroom</button>
+    </div>
+    <p class="entry-hint">Press Enter, or click anywhere in the scene.</p>
+  </div>
+</section>
+
+
+<!-- Sign in, or create the first administrator.
+
+     Shown INSTEAD of the dashboard, not over it: while this is visible the
+     page holds no attendance data, because none has been fetched. The gate is
+     the server refusing unauthenticated requests; this is only the form.
+
+     It is also a DIFFERENT COLOUR from the console behind it. body.locked
+     remaps nine palette tokens from cyan to violet, so signing in repaints
+     the whole interface rather than merely revealing it. See the gate palette
+     in styles.css. -->
+<section id="auth-screen" class="auth-screen" hidden aria-labelledby="auth-title">
+  <!-- The scene behind everything. Drawn by app.js on a 2D canvas with
+       ordinary trigonometry: no WebGL, no three.js, no CDN, so it still
+       works on a classroom machine with no network. It reads its colours out
+       of the computed palette, so it follows the theme. It is decoration and
+       is marked as such, so a screen reader walks straight past it. -->
+  <canvas id="auth-canvas" aria-hidden="true"></canvas>
+
+  <div class="gate">
+    <div class="gate-intro">
+      <!-- The 3D stage: a turning cube inside three tilted orbit rings, all
+           of it CSS transforms. Decoration, and hidden from assistive
+           technology and from phones alike - it holds nothing to read. -->
+      <div class="gate-stage" aria-hidden="true">
+        <div class="gate-rings">
+          <span class="gate-ring-c"></span>
+          <span class="gate-ring-a"></span>
+          <span class="gate-ring-b"></span>
+        </div>
+        <div class="gate-cube">
+          <span class="gate-face gate-face-front">CV</span>
+          <span class="gate-face gate-face-back">AI</span>
+          <span class="gate-face gate-face-right"></span>
+          <span class="gate-face gate-face-left"></span>
+          <span class="gate-face gate-face-top"></span>
+          <span class="gate-face gate-face-bottom"></span>
+        </div>
+      </div>
+
+      <p class="gate-eyebrow">Computer vision operations center</p>
+      <!-- Deliberately not a heading. The card's own <h1> is the heading for
+           this screen, and a level-2 above it would put the levels out of
+           order for the sake of a large font size. -->
+      <p class="gate-headline">Attendance, <em>observed</em>.</p>
+      <p class="gate-lede">
+        Cameras, inference and the attendance decision, running on the machine
+        in the room. Sign in to open the console.
+      </p>
+
+      <!-- Three statements about this build, each one true of the code in
+           this repository. None of them is a figure: nothing has been
+           fetched and nothing has been measured, so there is nothing to
+           report and the screen does not invent any. -->
+      <ul class="gate-points">
+        <li>
+          <span class="gate-tick" aria-hidden="true">&#10003;</span>
+          <span>
+            <b>Decided on this machine</b>
+            Faces are detected, matched and resolved to attendance locally.
+          </span>
+        </li>
+        <li>
+          <span class="gate-tick" aria-hidden="true">&#10003;</span>
+          <span>
+            <b>A face is not a password</b>
+            Signing in is a username and a PBKDF2 hash. No biometric data is
+            used to authenticate anyone.
+          </span>
+        </li>
+        <li>
+          <span class="gate-tick" aria-hidden="true">&#10003;</span>
+          <span>
+            <b>Offline by design</b>
+            This interface loads no external font, script or image, and a test
+            asserts their absence.
+          </span>
+        </li>
+      </ul>
+    </div>
+
+  <div class="auth-card">
+    <div class="brand auth-brand">
+      <span class="brand-mark" aria-hidden="true">CV</span>
+      <span class="brand-text">
+        <strong>ClassVision AI</strong>
+        <span class="brand-sub" id="auth-subtitle">Sign in</span>
+      </span>
+    </div>
+
+    <!-- Which door you are coming in by. Staff credentials live in `users`
+         and student credentials in `student_accounts`, so the two go to
+         different endpoints; asking once is kinder than refusing a correct
+         password because it was tried against the wrong table. -->
+    <div class="auth-switch" id="auth-switch" role="tablist"
+         aria-label="Who is signing in">
+      <button type="button" id="auth-as-staff" role="tab"
+              aria-selected="true">Staff</button>
+      <button type="button" id="auth-as-student" role="tab"
+              aria-selected="false">Student</button>
+    </div>
+
+    <h1 id="auth-title">Sign in</h1>
+    <p class="muted small" id="auth-intro">
+      Use the account your administrator created for you.
+    </p>
+
+    <form id="auth-form" autocomplete="on">
+      <div class="field" id="auth-name-field" hidden>
+        <label for="auth-display-name">Your name</label>
+        <input type="text" id="auth-display-name" maxlength="120"
+               autocomplete="name">
+      </div>
+
+      <div class="field">
+        <label for="auth-username">Username</label>
+        <input type="text" id="auth-username" maxlength="64" required
+               autocomplete="username" autocapitalize="none" spellcheck="false">
+      </div>
+
+      <div class="field">
+        <label for="auth-password">Password</label>
+        <input type="password" id="auth-password" maxlength="200" required
+               autocomplete="current-password">
+      </div>
+
+      <p class="muted small" id="auth-password-hint" hidden>
+        At least 10 characters. It is stored only as a PBKDF2 hash and cannot
+        be recovered &mdash; only replaced.
+      </p>
+
+      <p class="form-error" id="auth-error" role="alert" hidden></p>
+
+      <!-- The way out of a forgotten password. Shown only on the sign-in
+           screen, never during first-run setup, and it reveals nothing:
+           running the command needs write access to the database file, which
+           is the same access as opening it in any SQLite tool. -->
+      <details class="auth-recover" id="auth-recover" hidden>
+        <summary>Lost the only administrator password?</summary>
+        <p class="muted small">
+          Passwords are stored as PBKDF2 hashes and cannot be recovered &mdash;
+          only replaced. From the project folder, list the accounts and set a
+          new password for one:
+        </p>
+        <pre><code>python database/create_admin.py --list
+python database/create_admin.py --reset-password &lt;username&gt;</code></pre>
+        <p class="muted small">
+          You will be asked for the new password twice, and it is not echoed.
+          Any sessions that account had open are signed out.
+        </p>
+      </details>
+
+      <div class="dialog-actions">
+        <button type="submit" class="btn btn-primary" id="auth-submit">Sign in</button>
+      </div>
+    </form>
+
+    <p class="muted small auth-note">
+      Local password authentication. It has not been independently reviewed
+      and is not evaluated production security. No biometric data is used to
+      sign in.
+    </p>
+
+    <!-- Day or night, from the first screen.
+
+         The rail's copy of this switch is inside .app-shell, which is hidden
+         until somebody signs in - so without this control the one screen
+         every user sees first was the one screen that could not be set to
+         match the room. Same three states and the same applyTheme(), which
+         updates both switches. -->
+    <div class="auth-appearance">
+      <span class="metric-label" id="auth-appearance-label">Appearance</span>
+      <div class="theme-switch" id="gate-theme-switch" role="radiogroup"
+           aria-labelledby="auth-appearance-label">
+        <button type="button" id="gate-theme-auto" role="radio"
+                aria-checked="true" title="Follow this computer's setting">
+          <span aria-hidden="true">&#9685;</span> Auto
+        </button>
+        <button type="button" id="gate-theme-light" role="radio"
+                aria-checked="false" title="Always use the light theme">
+          <span aria-hidden="true">&#9728;</span> Light
+        </button>
+        <button type="button" id="gate-theme-dark" role="radio"
+                aria-checked="false" title="Always use the dark theme">
+          <span aria-hidden="true">&#9790;</span> Dark
+        </button>
+      </div>
+    </div>
+  </div>
+  </div>
+</section>
+
+<div class="app-shell">
+
+<!--
+  THE NAVIGATION RAIL
+
+  Fixed, grouped, and always there. Navigation must not scroll away from
+  somebody watching a live session, and an operations tool is used by people who
+  learn where things are and then stop looking for them.
+
+  Every item is still a `.tab` with a `data-view`, driven by the same
+  switchView() the tab bar used: this is a change of shape, not of mechanism.
+
+  The LABEL comes before the icon in the markup and the icon is moved left with
+  `order: -1`. A screen reader therefore reads the destination immediately
+  instead of walking past an image first. The icons are inline SVG rather than a
+  font or a sprite, because this page loads no file.
+-->
+<aside class="sidebar" id="sidebar">
+
+  <!-- ─────────────── BRAND ───────────────
+
+       The one place the product states what it is. A glass card rather than a
+       line of text in a corner, with the mark carrying an aperture ring - a
+       camera iris, which is what this system actually looks through.
+
+       The tagline is STATIC. It used to be the signed-in role, which meant the
+       product's own name was followed by "Teacher" and the person using it was
+       named nowhere. The role moved to the user card at the foot of the rail,
+       where a role belongs, and the brand now says what the product is. -->
+  <div class="sidebar-head">
+    <div class="brand rail-brand">
+      <span class="brand-mark" aria-hidden="true">CV</span>
+      <span class="brand-text">
+        <strong>ClassVision AI</strong>
+        <span class="brand-tagline">Intelligent Attendance System</span>
+      </span>
+    </div>
+
+    <!-- Narrow the rail to icons only. Desktop only: below 1080px the rail is
+         already a drawer that the top bar's button opens, and a collapse
+         control inside a drawer collapses nothing. -->
+    <button type="button" class="rail-collapse" id="sidebar-collapse"
+            aria-expanded="true" aria-controls="sidebar"
+            title="Collapse the navigation">
+      <span class="sr-only">Collapse the navigation</span>
+      <svg class="rail-collapse-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m14 7-5 5 5 5"/><path d="M18 5v14"/></svg>
+    </button>
+  </div>
+
+  <!-- ─────────────── NAVIGATION ───────────────
+
+       Four groups, and ONE DESTINATION PER JOB. That is the whole rule this
+       rail is built on, and the reason it was rebuilt:
+
+         OVERVIEW        what is happening now, and what it added up to
+         CLASSROOM       the people, the lessons and the classes
+         SYSTEM          the equipment and the models behind them
+         ADMINISTRATION  accounts, credentials, alerts and the log
+
+       Nothing is listed twice and nothing is a scroll position dressed up as
+       a page. "Model registry" used to scroll the Administration page to a
+       panel; it is now a view, like every other item here. "Attendance" is
+       deliberately absent, because Analytics is headed "Attendance
+       analytics" - two items leading to one view teaches people that the rail
+       is not to be trusted. -->
+  <nav class="sidebar-nav tabs" aria-label="Views">
+    <div class="nav-group" role="group" aria-labelledby="nav-group-overview">
+      <span class="nav-group-label" id="nav-group-overview">Overview</span>
+      <button class="tab nav-item" data-view="overview" aria-current="page"><span class="nav-label">Dashboard</span><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></button>
+      <button class="tab nav-item" data-view="live"><span class="nav-label">Live classroom</span><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 7.5A1.5 1.5 0 0 1 3.5 6h9A1.5 1.5 0 0 1 14 7.5v9A1.5 1.5 0 0 1 12.5 18h-9A1.5 1.5 0 0 1 2 16.5z"/><path d="m14 11 6-3.5v9L14 13z"/><circle cx="8" cy="12" r="2.2"/></svg></button>
+      <button class="tab nav-item" data-view="assembly"><span class="nav-label">Assembly</span><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="3" width="10" height="4" rx="1"/><circle cx="5" cy="12" r="1.3"/><circle cx="9.7" cy="12" r="1.3"/><circle cx="14.3" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/><circle cx="5" cy="16.2" r="1.3"/><circle cx="9.7" cy="16.2" r="1.3"/><circle cx="14.3" cy="16.2" r="1.3"/><circle cx="19" cy="16.2" r="1.3"/><circle cx="7.3" cy="20.4" r="1.3"/><circle cx="12" cy="20.4" r="1.3"/><circle cx="16.7" cy="20.4" r="1.3"/></svg></button>
+      <button class="tab nav-item" data-view="reports"><span class="nav-label">Analytics</span><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V4M4 20h16"/><rect x="7" y="12" width="3" height="5" rx="1"/><rect x="12" y="8" width="3" height="9" rx="1"/><rect x="17" y="5" width="3" height="12" rx="1"/></svg></button>
+    </div>
+
+    <div class="nav-group" role="group" aria-labelledby="nav-group-classroom">
+      <span class="nav-group-label" id="nav-group-classroom">Classroom</span>
+      <button class="tab nav-item" data-view="students"><span class="nav-label">Students</span><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16"/><circle cx="12" cy="11" r="2.4"/><path d="M8.4 16.4a4 4 0 0 1 7.2 0"/></svg></button>
+      <button class="tab nav-item" data-view="sessions"><span class="nav-label">Sessions</span><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></button>
+      <button class="tab nav-item" data-view="classes"><span class="nav-label">Classes</span><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5z"/><path d="M11 4h7.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H11"/><path d="M14 9h3M14 13h3"/></svg></button>
+      <button class="tab nav-item" data-view="assistant"><span class="nav-label">AI Assistant</span><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 1.9 4.6L18.5 9.5 13.9 11.4 12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/><path d="M18 16.5 18.8 18.3 20.6 19.1 18.8 19.9 18 21.7 17.2 19.9 15.4 19.1 17.2 18.3z"/></svg></button>
+    </div>
+
+    <div class="nav-group" role="group" aria-labelledby="nav-group-system">
+      <span class="nav-group-label" id="nav-group-system">System</span>
+      <button class="tab nav-item" data-view="cameras"><span class="nav-label">Camera health</span><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.6-2h6.8L17 8h3a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3"/></svg></button>
+      <button class="tab nav-item" data-view="academic" id="tab-academic" hidden><span class="nav-label">Academic</span><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 8.5 4.5L12 12 3.5 7.5z"/><path d="m3.5 12 8.5 4.5 8.5-4.5"/><path d="m3.5 16.5 8.5 4.5 8.5-4.5"/></svg></button>
+      <!-- A view now, not a link that scrolls another page. It is a `.tab`
+           like everything else here, because it is a destination like
+           everything else here. -->
+      <button class="tab nav-item" data-view="models" id="tab-models" hidden><span class="nav-label">Model registry</span><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5"/><path d="M10 4v3M14 4v3M10 17v3M14 17v3M4 10h3M4 14h3M17 10h3M17 14h3"/></svg></button>
+    </div>
+
+    <!-- ADMINISTRATION. Four jobs that used to be four panels on one page,
+         and each is now its own destination: an account list, a credential
+         list, an alerting rule set and a log. They share nothing but the
+         permission that opens them. -->
+    <div class="nav-group" role="group" aria-labelledby="nav-group-admin"
+         id="nav-group-admin-wrap" hidden>
+      <span class="nav-group-label" id="nav-group-admin">Administration</span>
+      <button class="tab nav-item" data-view="admin" id="tab-admin" hidden><span class="nav-label">Teachers</span><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4.5 6v6c0 4.4 3.1 8.2 7.5 9 4.4-.8 7.5-4.6 7.5-9V6z"/><path d="m9.2 12 2 2 3.6-3.6"/></svg></button>
+      <button class="tab nav-item" data-view="logins" id="tab-logins" hidden><span class="nav-label">Student logins</span><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7.5a4 4 0 0 1 8 0V10"/><circle cx="12" cy="15" r="1.4"/></svg></button>
+      <button class="tab nav-item" data-view="alerts" id="tab-alerts" hidden><span class="nav-label">Absence alerts</span><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 10a6 6 0 0 1 12 0c0 4 1.5 5.5 1.5 5.5h-15S6 14 6 10z"/><path d="M10 19a2 2 0 0 0 4 0"/></svg></button>
+      <button class="tab nav-item" data-view="audit" id="tab-audit" hidden><span class="nav-label">Activity log</span><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5z"/><path d="M8 9h8M8 13h8M8 17h5"/></svg></button>
+    </div>
+  </nav>
+
+  <div class="sidebar-foot">
+    <!-- Light, dark, or whatever the machine says.
+
+         Three buttons rather than one switch, because a two-state toggle has
+         nowhere to put "follow the system" - and following the system is the
+         default and the only behaviour that survives JavaScript being off.
+
+         role="radiogroup" is the honest role: three mutually exclusive
+         choices, not three independent switches. -->
+    <div class="theme-switch" id="theme-switch" role="radiogroup"
+         aria-label="Colour theme">
+      <button type="button" id="theme-auto" role="radio" aria-checked="true"
+              title="Follow this computer's setting">
+        <span aria-hidden="true">&#9685;</span> Auto
+      </button>
+      <button type="button" id="theme-light" role="radio" aria-checked="false"
+              title="Always use the light theme">
+        <span aria-hidden="true">&#9728;</span> Light
+      </button>
+      <button type="button" id="theme-dark" role="radio" aria-checked="false"
+              title="Always use the dark theme">
+        <span aria-hidden="true">&#9790;</span> Dark
+      </button>
+    </div>
+
+    <!-- ─────────────── WHO IS SIGNED IN ───────────────
+
+         Name, role, and whether the backend is answering, in one card.
+
+         The status dot is the BACKEND's, not a decorative "online" badge: it
+         is filled from /api/health and reads "unknown" until that endpoint has
+         answered once. A green dot that is green by default is a dot that
+         means nothing, and this interface has never had one.
+
+         The avatar is initials rather than a picture. Staff photos exist in
+         this product and are shown on the administration page; putting one in
+         the rail would be a face on screen all day in a room full of students,
+         which is a privacy decision nobody asked for. -->
+    <div class="rail-user">
+      <span class="rail-avatar" id="sidebar-user-avatar" aria-hidden="true">&mdash;</span>
+      <span class="rail-user-text">
+        <strong class="rail-user-name" id="sidebar-user-name">Not signed in</strong>
+        <span class="rail-user-role" id="sidebar-user-role">Teacher / Admin</span>
+      </span>
+      <button type="button" class="rail-signout" id="sidebar-signout"
+              title="Sign out">
+        <span class="sr-only">Sign out</span>
+        <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 17v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v2"/><path d="M19 12H10m9 0-3-3m3 3-3 3"/></svg>
+      </button>
+    </div>
+
+    <!-- Whether the backend is answering. Filled from /api/health, and
+         "unknown" until it has answered once - never a green dot by default. -->
+    <p class="sidebar-status" id="sidebar-status">
+      <span class="status-dot" id="sidebar-status-dot" aria-hidden="true"></span>
+      <span id="sidebar-status-text">Checking backend&hellip;</span>
+    </p>
+  </div>
+</aside>
+
+<div class="workspace">
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <button type="button" class="btn btn-quiet sidebar-toggle"
+            id="sidebar-toggle" aria-expanded="false" aria-controls="sidebar"
+            title="Show navigation">
+      <span aria-hidden="true">&#9776;</span>
+      <span class="sr-only">Show navigation</span>
+    </button>
+
+    <!-- BACK.
+
+         One control, on every page, that undoes the last navigation -
+         whatever that navigation was. Opening a session, opening a student,
+         following a link from the dashboard and choosing a destination in the
+         rail all push the same stack, so the answer to "how do I get out of
+         here" is the same answer everywhere.
+
+         It is HIDDEN rather than disabled when there is nowhere to go, which
+         is the first page of a session and nothing else. A disabled back
+         button is a promise the page cannot keep.
+
+         Keyboard: Alt+Left does the same thing, and so does the browser's own
+         back button - see pushNavState(). -->
+    <button type="button" class="btn btn-quiet topbar-back" id="topbar-back"
+            hidden title="Back (Alt+Left)">
+      <span aria-hidden="true">&larr;</span>
+      <span class="topbar-back-label">Back</span>
+    </button>
+
+    <div class="topbar-title">
+      <span class="topbar-eyebrow">Computer Vision Operations Center</span>
+      <!-- The name of the current view, NOT a section heading: it sits above
+           the page's own <h1> in the document, and making it an <h2> would put
+           a level-2 heading before the level-1 one it labels. -->
+      <p class="topbar-view" id="topbar-view">Overview</p>
+    </div>
+
+    <!-- Is a camera running right now. On every page, because somebody
+           reading a report still needs to know their classroom is live.
+           Reads LIVE only when the backend says a session is running. -->
+      <button type="button" class="session-flag" id="session-flag"
+              data-tip="Go to the live classroom">
+        <span class="status-dot" id="session-flag-dot" aria-hidden="true"></span>
+        <span id="session-flag-text">No active session</span>
+      </button>
+
+      <div class="topbar-actions">
+      <form class="filters" id="filters" aria-label="Dashboard filters">
+        <div class="field">
+          <label for="filter-class">Class</label>
+          <select id="filter-class" name="class">
+            <option value="">All classes</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="filter-date">Date</label>
+          <input type="date" id="filter-date" name="date">
+        </div>
+        <button type="button" id="filter-clear" class="btn btn-quiet">Clear</button>
+      </form>
+
+      <div class="account" id="account" hidden>
+        <span class="account-who">
+          <strong id="account-name"></strong>
+          <span class="muted small" id="account-role"></span>
+        </span>
+        <button type="button" class="btn btn-quiet" id="account-password">Change password</button>
+        <button type="button" class="btn btn-quiet" id="account-logout">Sign out</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main id="main" tabindex="-1">
+
+  <!-- status banner (health / empty database) -->
+  <div id="banner" class="banner" role="status" hidden></div>
+
+  <!-- ─────────────── OVERVIEW ─────────────── -->
+  <section id="view-overview" class="view" aria-labelledby="overview-heading">
+    <h1 id="overview-heading" class="sr-only">Attendance overview</h1>
+
+    <!-- ─────────────── THE STAGE ───────────────
+
+         The dashboard, standing in a room.
+
+         Five panes at four depths around one central object, and every figure
+         in them comes from /api/analytics/today and /api/live/status - the two
+         endpoints the panels below this already use. Nothing here is a second
+         source of truth and nothing here is invented: a morning with no
+         finalised session shows "No data" in the ring, because that is what
+         the backend said.
+
+         The detailed, flat, fully sortable version of all of this is directly
+         underneath, and it is still the thing you use to actually work. This
+         is the glance. -->
+    <div class="stage" id="overview-stage">
+
+      <!-- TOP: what the system is doing -->
+      <div class="stage-top">
+        <section class="pane pane-far pane-pad" data-reach="true"
+                 aria-labelledby="stage-system-heading">
+          <div class="pane-head">
+            <div>
+              <span class="panel-eyebrow">System</span>
+              <h2 id="stage-system-heading">Status</h2>
+            </div>
+            <span class="muted small pane-tools" id="stage-system-note"></span>
+          </div>
+          <ul class="status-grid" id="stage-system"></ul>
+        </section>
+      </div>
+
+      <!-- LEFT: attendance, as a ring in the air -->
+      <div class="stage-left">
+        <section class="pane pane-mid pane-pad" data-reach="true"
+                 aria-labelledby="stage-attendance-heading">
+          <span class="panel-eyebrow">Attendance</span>
+          <h2 id="stage-attendance-heading">Today</h2>
+
+          <!-- The arc is decoration around the figure, not the figure. The
+               number inside it is text on no background, and the ring carries
+               an aria-label with the same value so the comparison the arc
+               makes is available to a screen reader too. -->
+          <div class="att-ring" id="overview-ring">
+            <div class="att-ring-inner">
+              <span class="att-ring-value">&mdash;</span>
+              <span class="att-ring-label">Attendance</span>
+            </div>
+          </div>
+          <ul class="att-breakdown" id="overview-breakdown"></ul>
+        </section>
+      </div>
+
+      <!-- CENTRE: the AI core -->
+      <div class="stage-core">
+        <section class="pane pane-near" aria-labelledby="stage-core-heading">
+          <div class="pane-pad">
+            <div class="pane-head">
+              <div>
+                <span class="panel-eyebrow">Live classroom</span>
+                <h2 id="stage-core-heading">AI core</h2>
+              </div>
+              <span class="muted small pane-tools" id="stage-core-note"></span>
+            </div>
+          </div>
+
+          <div class="core-wrap">
+            <div class="core-stage">
+              <canvas id="core-canvas" aria-hidden="true"></canvas>
+              <div class="core-shell" aria-hidden="true"></div>
+              <!-- The core's state as a WORD. Its brightness and speed say
+                   the same thing, second. Nobody should have to infer a
+                   system state from a rotation rate. -->
+              <p class="core-caption">
+                <span class="core-word" id="core-word">Idle</span>
+                <span class="core-state" id="core-state">No session running</span>
+              </p>
+            </div>
+          </div>
+
+          <div class="pane-pad">
+            <ul class="cards small core-ring-figures" id="core-figures"></ul>
+          </div>
+        </section>
+      </div>
+
+      <!-- RIGHT: the people, as a formation -->
+      <div class="stage-right">
+        <section class="pane pane-mid pane-pad" data-reach="true"
+                 aria-labelledby="stage-students-heading">
+          <div class="pane-head">
+            <div>
+              <span class="panel-eyebrow">Students</span>
+              <h2 id="stage-students-heading">In the room</h2>
+            </div>
+            <span class="muted small pane-tools"
+                  id="stage-students-count"></span>
+          </div>
+
+          <!-- The sweep plane is a sibling of the formation, not a child of
+               it: the formation is replaced wholesale on every poll, and a
+               child would be destroyed with it. data-scanning on the wrapper
+               IS the pipeline state, so the sweep cannot outlive the
+               session. -->
+          <div class="constellation-wrap" id="overview-room">
+            <div class="scan-plane" aria-hidden="true"></div>
+            <div class="constellation" id="overview-constellation"></div>
+          </div>
+        </section>
+      </div>
+
+      <!-- BOTTOM: the session as a path -->
+      <div class="stage-bottom">
+        <section class="pane pane-mid pane-pad" data-reach="true"
+                 aria-labelledby="stage-timeline-heading">
+          <span class="panel-eyebrow">Timeline</span>
+          <h2 id="stage-timeline-heading">This session</h2>
+          <div id="overview-spine"></div>
+        </section>
+      </div>
+    </div>
+
+    <!-- The hero states what the system IS. It holds no measurement: the
+         modules underneath it are the numbers, and they are the backend's. -->
+    <div class="hero grid-texture">
+      <span class="hero-mark" aria-hidden="true">CV</span>
+      <div>
+        <p class="hero-title">ClassVision AI</p>
+        <p class="hero-sub">Computer Vision Operations Center</p>
+      </div>
+      <dl class="hero-meta" id="hero-meta">
+        <div>
+          <dt class="sr-only">Backend</dt>
+          <dd id="hero-backend">&mdash;</dd>
+        </div>
+        <div>
+          <dt class="sr-only">Recogniser</dt>
+          <dd id="hero-model">&mdash;</dd>
+        </div>
+      </dl>
+    </div>
+
+    <!-- TODAY.
+
+         Deliberately OUTSIDE #overview-body, which is hidden until the
+         database holds a completed session. A teacher opening this on the
+         first morning of term has no completed sessions and still needs to see
+         today's timetable and the buttons that start it; hiding the whole page
+         until some attendance exists is how a working system looks broken.
+
+         Everything in here is scoped on the server to the signed-in account -
+         see /api/analytics/today. A teacher sees their own classes and their
+         own students; hiding rows in the browser is not a permission. -->
+    <section class="panel panel-primary today-panel"
+             aria-labelledby="today-heading">
+      <div class="panel-head">
+        <div>
+          <span class="panel-eyebrow">Live operations</span>
+          <h2 id="today-heading">Today</h2>
+        </div>
+        <span class="muted small panel-tools" id="today-date"></span>
+      </div>
+      <p class="scope-note" id="today-scope"></p>
+
+      <ul class="cards small" id="today-cards"></ul>
+
+      <div id="today-live" hidden></div>
+
+      <h3>Today&rsquo;s sessions</h3>
+      <div id="today-sessions"></div>
+    </section>
+
+    <p class="scope-note" id="overview-scope"></p>
+
+    <div id="overview-empty" class="empty" hidden>
+      <h2>No attendance sessions yet</h2>
+      <p>
+        Nothing has been recorded in the database. Run a session through the
+        attendance engine, then reload this page.
+      </p>
+      <p class="muted">
+        This dashboard never creates example data — an empty database is shown
+        as empty.
+      </p>
+    </div>
+
+    <div id="overview-body" hidden>
+      <span class="metric-label">Dataset totals</span>
+      <ul class="cards" id="summary-cards"></ul>
+
+      <div class="panel-grid">
+        <section class="panel" aria-labelledby="dist-heading">
+          <h2 id="dist-heading">Status distribution</h2>
+          <div id="status-chart"></div>
+          <table class="mini-table" id="status-table">
+            <caption class="sr-only">Attendance status counts</caption>
+            <thead><tr><th scope="col">Status</th><th scope="col">Count</th><th scope="col">Share</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </section>
+
+        <section class="panel" aria-labelledby="attention-heading">
+          <h2 id="attention-heading">Needs review</h2>
+          <p class="muted small" id="attention-rule"></p>
+          <div id="attention-body"></div>
+        </section>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ─────────────── SESSIONS ─────────────── -->
+  <section id="view-sessions" class="view" hidden aria-labelledby="sessions-heading">
+    <div class="detail-head">
+      <h1 id="sessions-heading">Sessions</h1>
+      <button type="button" class="btn btn-primary" id="add-session">+ Add Session</button>
+    </div>
+
+    <div id="sessions-empty" class="empty" hidden>
+      <h2>No sessions match these filters</h2>
+      <p>
+        No session matches these filters. Use <strong>+ Add Session</strong>
+        to schedule one, then run it from the Live classroom tab.
+      </p>
+    </div>
+
+    <span class="panel-eyebrow">Register</span>
+    <div class="table-scroll" id="sessions-list-wrap">
+      <table class="data-table" id="sessions-table">
+        <caption class="sr-only">All attendance sessions</caption>
+        <thead>
+          <tr>
+            <th scope="col">Date</th><th scope="col">Class</th>
+            <th scope="col">Start</th><th scope="col">End</th>
+            <th scope="col">Status</th><th scope="col">Expected</th>
+            <th scope="col">Policy</th><th scope="col"></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="pager" id="sessions-pager"></div>
+
+    <!-- session detail -->
+    <section id="session-detail" class="panel detail" hidden aria-labelledby="session-detail-heading">
+      <div class="detail-head">
+        <h2 id="session-detail-heading">Session</h2>
+        <button type="button" class="btn btn-quiet" id="close-session">
+          <span aria-hidden="true">&larr;</span> Back to sessions
+        </button>
+      </div>
+      <dl class="meta" id="session-meta"></dl>
+      <ul class="cards small" id="session-cards"></ul>
+
+      <h3>Attendance</h3>
+      <div class="table-controls">
+        <div class="field">
+          <label for="att-status">Filter status</label>
+          <select id="att-status">
+            <option value="">All</option>
+            <option>PRESENT</option><option>LATE</option>
+            <option>PARTIAL</option><option>LEFT_EARLY</option>
+            <option>ABSENT</option><option>UNKNOWN</option>
+            <option>MANUAL_OVERRIDE</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="att-sort">Sort by</label>
+          <select id="att-sort">
+            <option value="student_id">Student ID</option>
+            <option value="name">Name</option>
+            <option value="status">Status</option>
+            <option value="present_seconds">Duration</option>
+            <option value="presence_ratio">Presence %</option>
+            <option value="first_seen">First seen</option>
+          </select>
+        </div>
+        <div class="field checkbox">
+          <input type="checkbox" id="att-desc">
+          <label for="att-desc">Descending</label>
+        </div>
+      </div>
+
+      <div class="table-scroll">
+        <table class="data-table" id="attendance-table">
+          <caption class="sr-only">Attendance records for this session</caption>
+          <thead>
+            <tr>
+              <th scope="col">Student</th><th scope="col">Name</th>
+              <th scope="col">Status</th><th scope="col">First seen</th>
+              <th scope="col">Last seen</th><th scope="col">Duration</th>
+              <th scope="col">Presence</th><th scope="col">Policy</th>
+              <th scope="col"></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="pager" id="attendance-pager"></div>
+
+      <h3>Presence timeline</h3>
+      <p class="muted small">
+        Each bar shows verified presence within the session window. Gaps are
+        time the student was not verified. Track references are technical
+        evidence from the tracking layer, not identities.
+      </p>
+      <div id="timeline"></div>
+    </section>
+  </section>
+
+  <!-- ─────────────── STUDENTS ─────────────── -->
+  <section id="view-students" class="view" hidden aria-labelledby="students-heading">
+    <div class="detail-head">
+      <h1 id="students-heading">Students</h1>
+      <button type="button" class="btn btn-primary" id="add-student">+ Add Student</button>
+    </div>
+
+    <form class="table-controls" id="student-search-form" role="search">
+      <div class="field grow">
+        <label for="student-search">Search students</label>
+        <input type="search" id="student-search"
+               placeholder="ID, name or roll number">
+      </div>
+      <!-- Year, class and section.
+
+           Free-text inputs with a datalist rather than <select>, matching
+           the control the class filter already used, and for the reason that
+           made it right there: a school's years and classes are its own
+           words - "3rd Year", "XII", "Sem 5" - and the options come from
+           what the registry actually holds. A <select> would have to be
+           populated before it could be used at all, which means a filter
+           that is empty until a request finishes.
+
+           Every one of the three is optional and they combine, so all eight
+           combinations are reachable from this one row. -->
+      <div class="field">
+        <label for="student-filter-year">Year</label>
+        <input type="text" id="student-filter-year" list="student-years"
+               maxlength="60" placeholder="All years">
+        <datalist id="student-years"></datalist>
+      </div>
+      <div class="field">
+        <label for="student-filter-class">Class</label>
+        <input type="text" id="student-filter-class" list="student-classes"
+               maxlength="120" placeholder="All classes">
+        <datalist id="student-classes"></datalist>
+      </div>
+      <div class="field">
+        <label for="student-filter-section">Section</label>
+        <input type="text" id="student-filter-section" list="student-sections"
+               maxlength="40" placeholder="All sections">
+        <datalist id="student-sections"></datalist>
+      </div>
+      <div class="field">
+        <label for="student-filter-status">Status</label>
+        <select id="student-filter-status">
+          <option value="">All</option>
+          <option value="ACTIVE">Active</option>
+          <option value="INACTIVE">Inactive</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="student-filter-enrolled">Face enrollment</label>
+        <select id="student-filter-enrolled">
+          <option value="">All</option>
+          <option value="true">Enrolled</option>
+          <option value="false">Not enrolled</option>
+        </select>
+      </div>
+      <button type="submit" class="btn">Apply</button>
+      <button type="button" class="btn btn-quiet" id="student-filter-clear">Clear</button>
+    </form>
+
+    <!-- How many, and of how many.
+
+         Both figures come from the API's `total` - the filtered one from the
+         current request and the unfiltered one from a request with no
+         filters - so neither is counted in the browser and neither requires
+         downloading a student. -->
+    <p class="muted small" id="students-count" role="status"></p>
+
+    <div id="students-empty" class="empty" hidden>
+      <h2>No students</h2>
+      <p id="students-empty-reason">
+        No student matches this view. Use <strong>+ Add Student</strong> to
+        register one and capture their face samples, then schedule a session
+        for them.
+      </p>
+      <p class="muted">
+        Students registered from the command line appear here too &mdash; both
+        paths write the same registry row.
+      </p>
+    </div>
+
+    <!-- ─────────────── THE REGISTER, AS A FORMATION ───────────────
+
+         The question a table answers badly: how much of this class can the
+         camera actually name?
+
+         The table below is still the register and is still how you FIND one
+         student among nine hundred - a formation is not a finding tool, and
+         replacing the table with one would have been a downgrade dressed as a
+         redesign. What the formation is good at is shape at a glance: a wall
+         of cyan is a class ready for a session, a scattering of amber is an
+         afternoon of enrolment nobody has done yet.
+
+         It draws the SAME PAGE the table shows, from the same request, so the
+         two can never disagree and no second query exists. Selecting a person
+         opens the same profile the table rows open.
+
+         The three states here are about FACE SAMPLES, not attendance. Nobody
+         in this formation is present or absent; the note underneath says so,
+         and the states are drawn in the accent rather than in the presence
+         green precisely so the two are never confused. -->
+    <section class="pane pane-mid pane-pad roster-pane" id="roster-pane" hidden
+             aria-labelledby="roster-heading">
+      <div class="pane-head">
+        <div>
+          <span class="panel-eyebrow">Register</span>
+          <h2 id="roster-heading">Who the camera can recognise</h2>
+        </div>
+        <span class="muted small pane-tools" id="roster-count"></span>
+      </div>
+
+      <div class="constellation-wrap">
+        <div class="constellation" id="roster-constellation"></div>
+      </div>
+
+      <p class="muted small" id="roster-note"></p>
+    </section>
+
+    <span class="panel-eyebrow">Recognised identities</span>
+    <div class="table-scroll" id="students-list-wrap">
+      <table class="data-table" id="students-table">
+        <caption class="sr-only">Enrolled students</caption>
+        <thead>
+          <tr><th scope="col">Student ID</th><th scope="col">Name</th>
+              <th scope="col">Roll</th><th scope="col">Year</th>
+              <th scope="col">Class</th>
+              <th scope="col">Section</th><th scope="col">Status</th>
+              <th scope="col">Enrollment</th>
+              <th scope="col" class="num">Samples</th>
+              <th scope="col">Attendance</th>
+              <th scope="col">Actions</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="pager" id="students-pager"></div>
+
+    <section id="student-detail" class="panel detail" hidden aria-labelledby="student-detail-heading">
+      <div class="detail-head">
+        <h2 id="student-detail-heading">Student</h2>
+        <button type="button" class="btn btn-quiet" id="close-student">
+          <span aria-hidden="true">&larr;</span> Back to students
+        </button>
+      </div>
+      <dl class="meta" id="student-meta"></dl>
+      <ul class="cards small" id="student-cards"></ul>
+
+      <h3>Attendance trend</h3>
+      <p class="muted small">
+        The most recent half of this student&rsquo;s sessions against the half
+        before them. Plain arithmetic over the table below &mdash; no model, no
+        prediction &mdash; and it says &ldquo;not enough sessions&rdquo; rather
+        than naming a direction it cannot support.
+      </p>
+      <div id="student-trend"></div>
+
+      <h3>Attendance by session</h3>
+      <div id="student-chart"></div>
+
+      <div class="table-scroll">
+        <table class="data-table" id="student-history">
+          <caption class="sr-only">Attendance history</caption>
+          <thead>
+            <tr><th scope="col">Date</th><th scope="col">Class</th>
+                <th scope="col">Status</th><th scope="col">Presence</th>
+                <th scope="col">Duration</th><th scope="col">Policy</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </section>
+
+  <!-- ─────────────── LIVE CLASSROOM ─────────────── -->
+  <section id="view-live" class="view" hidden aria-labelledby="live-heading">
+    <h1 id="live-heading">Live classroom</h1>
+    <p class="scope-note">
+      Presence readings from the cameras, while lessons are running. Nothing on
+      this page is attendance. Attendance is calculated once, by the rule
+      engine, after the session has been stopped and completed.
+    </p>
+
+    <!-- THE GLOBAL LINE.
+
+         How many classrooms are running, and what the cameras are doing. Every
+         figure is a SUM of per-session figures the backend reported, and each
+         is labelled as a total - no per-class number is ever shown here,
+         because a detection count belonging to two classrooms would be a count
+         of nothing. -->
+    <ul class="status-grid" id="live-summary-bar" aria-label="Live totals"></ul>
+
+    <!-- FINISH EVERY RUNNING CLASS.
+
+         Not a new rule and not a new endpoint: it calls the same per-session
+         stop the Finish button on each panel calls, once per session, one
+         after another. So every finalisation follows exactly the product
+         rules it already followed, and a failure in one classroom cannot
+         half-finish another.
+
+         Hidden until there are at least two classes running, because with one
+         it would be a second button that does what Finish already does. It
+         confirms first, and the confirmation NAMES the classes - a bulk
+         action whose scope you cannot see before agreeing to it is not a
+         confirmation. -->
+    <div class="live-global-actions" id="live-global-actions" hidden>
+      <button type="button" class="btn btn-danger" id="live-finish-all">
+        Finish all sessions
+      </button>
+      <span class="muted small" id="live-finish-all-note"></span>
+    </div>
+
+    <!-- When these figures were last read from the backend.
+
+         A monitoring page that has silently stopped polling looks exactly like
+         a quiet classroom, so the page says when it last heard anything. The
+         clock is the browser's, and it is labelled as a fetch time rather than
+         as a measurement. -->
+    <p class="muted small live-updated" id="live-updated" role="status"></p>
+
+    <!-- ONE SESSION, ENLARGED.
+
+         Shown instead of the grid when a class is focused. The other running
+         classes stay reachable in the switcher underneath rather than being
+         hidden, so moving between classrooms is one click and never a
+         navigation. -->
+    <section id="live-focus" class="panel panel-primary" hidden
+             aria-labelledby="live-focus-heading">
+      <div class="panel-head">
+        <button type="button" class="btn btn-quiet" id="live-focus-back">
+          <span aria-hidden="true">&larr;</span> Back to all live classes
+        </button>
+        <div class="grow">
+          <span class="panel-eyebrow" id="live-focus-eyebrow">Focused</span>
+          <h2 id="live-focus-heading">Session</h2>
+        </div>
+      </div>
+      <div id="live-focus-body"></div>
+
+      <!-- PRESENT NOW, for the focused class only.
+
+           Fetched scoped to this session, so the names belong to this
+           classroom and to no other. Every state is the backend's own; none of
+           them is attendance, which the heading says out loud because
+           "PRESENT" on a live page is the single easiest thing here to
+           misread. -->
+      <section class="present-now" aria-labelledby="present-now-heading">
+        <div class="panel-head">
+          <div>
+            <span class="panel-eyebrow">Recognised identities</span>
+            <h3 id="present-now-heading">Present now</h3>
+          </div>
+          <span class="muted small panel-tools" id="present-now-count"></span>
+        </div>
+        <p class="muted small">
+          Who the camera has verified in this session, and what the liveness
+          layer makes of each. <strong>This is not attendance</strong> &mdash;
+          attendance is decided once, by the rule engine, after the session has
+          been stopped.
+        </p>
+        <ul class="present-list" id="present-now-list"></ul>
+      </section>
+      <div id="live-focus-switcher" class="focus-switcher"></div>
+    </section>
+
+    <!-- THE GRID.
+
+         One panel per active session. The panel count is exactly the number of
+         sessions the backend reports running - 1, 3, 8, 15 - and the column
+         count is chosen from that number and the viewport, never fixed. -->
+    <div id="live-grid" class="live-grid" aria-label="Active classrooms"></div>
+
+    <div id="live-grid-empty" class="empty" hidden>
+      <h2>No active session</h2>
+      <p>
+        No classroom is running. Start one below: choose a scheduled session and
+        the camera it should open on.
+      </p>
+      <p class="muted">
+        This page reads the running sessions from the backend. It shows a class
+        only while the backend reports that class as live.
+      </p>
+    </div>
+
+    <form class="table-controls" id="live-controls">
+      <div class="field grow">
+        <label for="live-session">Session to run</label>
+        <select id="live-session">
+          <option value="">Loading sessions&hellip;</option>
+        </select>
+      </div>
+      <!-- WHICH CAMERA.
+
+           A registered device, picked by the room it is in rather than by the
+           capture index it happens to answer on. The device's own
+           camera_index is what the pipeline opens - see LiveStartRequest and
+           LiveSessionManager.start - so a school that recables a room fixes it
+           once, on the device, instead of in every teacher's habit.
+
+           The index box stays, and stays usable: a machine with a webcam and
+           no registered device is the case this project started from, and it
+           must keep working. An explicit index overrides the device's. -->
+      <div class="field">
+        <label for="live-camera-device">Camera</label>
+        <select id="live-camera-device">
+          <option value="">Default camera</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="live-camera">Camera index</label>
+        <input type="number" id="live-camera" min="0" max="64" step="1"
+               list="available-cameras"
+               inputmode="numeric" placeholder="from device">
+      </div>
+      <button type="button" class="btn btn-quiet" id="live-detect">Detect cameras</button>
+      <button type="button" class="btn btn-primary" id="live-start">Start session</button>
+      <button type="button" class="btn btn-quiet" id="live-stop">Stop and finalise</button>
+    </form>
+
+    <p class="muted small" id="live-camera-note"></p>
+
+    <p class="form-error" id="live-error" role="alert" hidden></p>
+
+    <!-- The classroom, as the camera sees it.
+
+         The COMPLETE frame, never a face crop: a teacher looks at a classroom
+         to find out who is at the back, whether the camera has drifted and
+         whether half the room is out of shot, and a grid of cropped faces
+         answers none of those. The recogniser goes on using aligned crops
+         internally; they never reach this page.
+
+         Served by the capture worker that is already running - this opens no
+         second camera and triggers no extra inference. Nothing is recorded. -->
+    <!-- The console: the frame and its telemetry, read together. -->
+    <div class="console">
+
+    <div class="classroom holo-cam" id="classroom" data-live="false">
+      <div class="classroom-stage holo-cam-stage">
+        <img id="live-view" alt="Live classroom view with detection overlays"
+             hidden>
+        <div class="classroom-idle" id="classroom-idle">
+          <p><strong>No classroom view</strong></p>
+          <p class="muted small">Start a session to see the room.</p>
+        </div>
+
+        <!-- The frame furniture. Four brackets and one travelling band,
+             all of it decoration over the picture and all of it at an
+             alpha low enough that it never obscures a face.
+
+             THE DETECTION BOXES ARE NOT DRAWN HERE. They are already in
+             the picture: live_overlay.py draws them onto the frame
+             server-side, where the coordinates are. No bounding box is
+             exposed by the API, so a client-side box would be a guess
+             at where somebody is standing - and a guess drawn over a
+             real camera frame is a fabrication. -->
+        <span class="holo-cam-corner holo-cam-corner-tl" aria-hidden="true"></span>
+        <span class="holo-cam-corner holo-cam-corner-tr" aria-hidden="true"></span>
+        <span class="holo-cam-corner holo-cam-corner-bl" aria-hidden="true"></span>
+        <span class="holo-cam-corner holo-cam-corner-br" aria-hidden="true"></span>
+        <div class="holo-cam-scan" aria-hidden="true"></div>
+      </div>
+
+      <!-- LIVE, CAMERA, FPS, STUDENTS, AUTHENTICITY. Every one of them a
+           measured value off /api/live/status; a field the pipeline did
+           not send renders as an em dash, never as a zero. -->
+      <ul class="holo-cam-rail" id="live-cam-rail"></ul>
+      <p class="muted small classroom-note">
+        The complete camera frame, with the pipeline&rsquo;s boxes drawn on
+        top. <strong>Nothing is recorded</strong> &mdash; each frame replaces
+        the last and none is written to disk.
+      </p>
+    </div>
+
+    <!-- Telemetry. Every reading here is REPORTED by the running pipeline;
+         a field it did not send renders as "No data" rather than as a zero
+         nobody measured. -->
+    <aside class="console-side" aria-label="Session telemetry">
+      <div class="live-strip" id="live-strip" role="status"></div>
+      <ul class="cards small" id="live-cards"></ul>
+    </aside>
+
+    </div><!-- /.console -->
+
+    <div class="panel-grid">
+      <section class="panel" aria-labelledby="live-verified-heading">
+        <h2 id="live-verified-heading">Verified in this session</h2>
+        <p class="muted small" id="live-verified-note">
+          A student listed here has been confirmed by the recognition
+          stability rules. Not visible right now does not mean absent.
+          Identity, liveness and authenticity are three separate facts: being
+          recognised does not make somebody live, a face that looks live is
+          not automatically anybody, and video that came from this camera is a
+          different question again.
+        </p>
+        <div class="table-scroll">
+          <table class="data-table" id="live-students-table">
+            <caption class="sr-only">Students verified during the live session</caption>
+            <thead>
+              <tr>
+                <th scope="col">Student</th><th scope="col">Name</th>
+                <th scope="col">Live state</th><th scope="col">Liveness</th>
+                <th scope="col">Authenticity</th>
+                <th scope="col">Counts</th><th scope="col">First seen</th>
+                <th scope="col">Last seen</th><th scope="col">Duration</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="live-tracks-heading">
+        <h2 id="live-tracks-heading">Tracked people</h2>
+        <div id="live-unverified"></div>
+        <p class="muted small">
+          Everyone the camera is following, whether or not they have been
+          identified. A person whose identity has not been confirmed is
+          counted, never named and never guessed, and produces no attendance
+          record.
+        </p>
+        <div class="table-scroll">
+          <table class="data-table" id="live-tracks-table">
+            <caption class="sr-only">Tracked people, with identity and liveness</caption>
+            <thead>
+              <tr>
+                <th scope="col">Track</th><th scope="col">Identity</th>
+                <th scope="col">Liveness</th>
+                <th scope="col">Authenticity</th>
+                <th scope="col">Presence</th><th scope="col">Counts</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="muted small" id="live-liveness-note"></p>
+        <p class="muted small" id="live-authenticity-note"></p>
+      </section>
+    </div>
+
+    <section class="panel detail" id="live-summary" hidden
+             aria-labelledby="live-summary-heading">
+      <div class="detail-head">
+        <h2 id="live-summary-heading">Finalised</h2>
+        <button type="button" class="btn btn-quiet" id="close-live-summary">
+          <span aria-hidden="true">&larr;</span> Back to the classroom
+        </button>
+      </div>
+      <dl class="meta" id="live-summary-meta"></dl>
+      <p class="muted small" id="live-summary-note"></p>
+    </section>
+  </section>
+
+  <!-- ─────────────── CAMERA HEALTH ─────────────── -->
+  <section id="view-cameras" class="view" hidden aria-labelledby="cameras-heading">
+    <div class="detail-head">
+      <h1 id="cameras-heading">Camera health</h1>
+      <div class="row-actions">
+        <button type="button" class="btn btn-primary" id="camera-register"
+                hidden>+ Register camera</button>
+        <button type="button" class="btn" id="cameras-refresh">Refresh</button>
+      </div>
+    </div>
+    <p class="scope-note">
+      The configured classroom camera devices and whether they are answering.
+      This page reports what the <strong>backend</strong> last heard from the
+      hardware &mdash; it opens no camera of its own and shows no picture. The
+      classroom view lives on the Live classroom tab.
+    </p>
+
+    <!-- Loading. Replaced as soon as the API answers; never left showing. -->
+    <p class="muted" id="cameras-loading" role="status">Checking camera health&hellip;</p>
+
+    <!-- Failure. Carries its own retry so the page is not a dead end. -->
+    <div id="cameras-error" class="empty" hidden>
+      <h2>Unable to retrieve camera health</h2>
+      <p id="cameras-error-detail" class="muted"></p>
+      <button type="button" class="btn btn-primary" id="cameras-retry">Try again</button>
+    </div>
+
+    <div id="cameras-body" hidden>
+      <!-- The headline device: the one the live pipeline is using if a session
+           is running, otherwise the first registered camera. -->
+      <!-- SYSTEM.
+
+           Six modules, each from an endpoint that already exists: /api/health
+           for the API, its database and its schema, the camera list for the
+           device, the live runtime for the pipeline, and /api/sync/status for
+           the outbound queue.
+
+           Every module shows a WORD as well as a colour, and a module whose
+           source has not answered reads UNKNOWN. Nothing here is derived from
+           anything else - a queue with items in it is reported as a queue with
+           items in it, not as a fault, because queued attendance has not been
+           lost. -->
+      <section class="panel" aria-labelledby="system-heading">
+        <span class="panel-eyebrow">Subsystems</span>
+        <h2 id="system-heading">System health</h2>
+        <p class="muted small">
+          What each part of the installation last reported about itself. A
+          module reads <strong>UNKNOWN</strong> until its source has answered;
+          none of them is assumed to be healthy.
+        </p>
+        <ul class="status-grid" id="system-status"></ul>
+      </section>
+
+      <section class="panel panel-primary" id="cameras-summary-panel"
+               aria-labelledby="cameras-summary-heading">
+        <div class="panel-head">
+          <div>
+            <span class="panel-eyebrow">Device under watch</span>
+            <h2 id="cameras-summary-heading">Current device</h2>
+          </div>
+        </div>
+        <div class="cam-headline" id="cameras-headline"></div>
+        <ul class="cards small" id="cameras-cards"></ul>
+      </section>
+
+
+      <!-- The device, as an object rather than as a row of cards.
+
+           The figures around it are the same readings the table below
+           reports, in the same units, from the same endpoint. The model is a
+           CSS cuboid: six faces and a lens, no canvas, because a canvas that
+           exists to draw a box could have been a div. -->
+      <section class="panel" aria-labelledby="cam-model-heading">
+        <div class="panel-head">
+          <div>
+            <span class="panel-eyebrow">Device</span>
+            <h2 id="cam-model-heading">Camera</h2>
+          </div>
+          <span class="muted small panel-tools" id="cam-model-note"></span>
+        </div>
+
+        <div class="cam-model-wrap">
+          <div class="cam-model" id="cam-model" data-state="idle"
+               aria-hidden="true">
+            <div class="cam-body">
+              <span class="cam-face cam-face-front">
+                <span class="cam-lens"></span>
+              </span>
+              <span class="cam-face cam-face-back"></span>
+              <span class="cam-face cam-face-right"></span>
+              <span class="cam-face cam-face-left"></span>
+              <span class="cam-face cam-face-top"></span>
+              <span class="cam-face cam-face-bottom"></span>
+            </div>
+          </div>
+
+          <ul class="status-grid" id="cam-model-status"></ul>
+        </div>
+      </section>
+
+      <!-- AUTHENTICITY, which is not identity and not liveness.
+
+           Three separate facts, and this product keeps them separate
+           everywhere. The sphere shows the authenticity state the pipeline
+           reported, as a word; the rim colour is the second signal and the
+           sentence underneath is the third. -->
+      <section class="panel" aria-labelledby="auth-sphere-heading">
+        <div class="panel-head">
+          <div>
+            <span class="panel-eyebrow">Evidence</span>
+            <h2 id="auth-sphere-heading">Authenticity</h2>
+          </div>
+        </div>
+
+        <div class="auth-sphere" id="auth-sphere" role="img"
+             aria-label="Authenticity state: unknown">
+          <span class="auth-sphere-word" id="auth-sphere-word">UNKNOWN</span>
+        </div>
+        <p class="muted small" id="auth-sphere-note">
+          Authenticity is independent of identity and of liveness. A confirmed
+          student can have an unverified source, and an authentic source names
+          nobody.
+        </p>
+      </section>
+
+      <section class="panel" aria-labelledby="cameras-runtime-heading">
+        <h2 id="cameras-runtime-heading">Live pipeline</h2>
+        <p class="muted small">
+          Read from the running session rather than from the database, so this
+          reflects what is actually processing frames right now.
+        </p>
+        <dl class="meta" id="cameras-runtime"></dl>
+      </section>
+
+      <section class="panel" aria-labelledby="cameras-table-heading">
+        <span class="panel-eyebrow">Fleet</span>
+        <h2 id="cameras-table-heading">Registered devices</h2>
+        <p class="muted small">
+          What a device <strong>is</strong> and <strong>where</strong> it is,
+          alongside whatever it has actually told the backend about itself.
+          Registration records no health: a camera that has just been registered
+          reads <strong>No data</strong> for heartbeat, frame rate, latency and
+          pipeline state, because nothing has been heard from it yet. A
+          plausible-looking zero there would be a reading nobody measured.
+        </p>
+        <div id="cameras-empty" class="empty" hidden>
+          <h2>No cameras registered</h2>
+          <p>
+            No camera device has been registered yet. Live classroom sessions
+            still work &mdash; a registered device is how a camera reports its
+            own health between sessions, and how a teacher picks a room rather
+            than an index number.
+          </p>
+          <p class="muted">
+            Nothing is invented here: an unregistered camera has no health to
+            report, and this page says so rather than showing a green light.
+          </p>
+        </div>
+        <div class="table-scroll" id="cameras-table-wrap">
+          <table class="data-table" id="cameras-table">
+            <caption class="sr-only">Registered camera devices and their health</caption>
+            <thead>
+              <tr>
+                <th scope="col">Camera ID</th><th scope="col">Label</th>
+                <th scope="col">Classroom</th><th scope="col">Index</th>
+                <th scope="col">Status</th><th scope="col">Last heartbeat</th>
+                <th scope="col">FPS</th><th scope="col">Latency</th>
+                <th scope="col">Pipeline</th><th scope="col">Registered</th>
+                <th scope="col">Last error</th><th scope="col">Actions</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <p class="muted small" id="cameras-note"></p>
+    </div>
+  </section>
+
+  <!-- ─────────────── REPORTS ─────────────── -->
+  <section id="view-reports" class="view" hidden aria-labelledby="reports-heading">
+    <h1 id="reports-heading">Attendance analytics</h1>
+    <p class="scope-note">
+      Attendance that has already been decided, filtered and exportable. This
+      page calculates <strong>nothing</strong>: every row was written by the
+      rule engine after a session was finalised, and changing a filter changes
+      which decisions you are looking at, never what any of them was.
+      Reports are scoped on the server to the classes and students your account
+      may see.
+    </p>
+
+    <!-- Four readings of the same stored decisions. Records is the register
+         itself; the two summaries are the analytics service's own numbers, not
+         a second calculation of them; the seat map is one session on one sheet
+         of paper. -->
+    <div class="mode-switch" id="report-modes" role="tablist"
+         aria-label="Which report">
+      <button type="button" id="report-mode-records" role="tab"
+              aria-selected="true" data-report="records"
+              title="Every stored attendance decision, filtered">
+        <span aria-hidden="true">&#9776;</span> Records
+      </button>
+      <button type="button" id="report-mode-classes" role="tab"
+              aria-selected="false" data-report="classes"
+              title="One row per class">
+        <span aria-hidden="true">&#9638;</span> By class
+      </button>
+      <button type="button" id="report-mode-terms" role="tab"
+              aria-selected="false" data-report="terms"
+              title="One row per academic term">
+        <span aria-hidden="true">&#9673;</span> By term
+      </button>
+      <button type="button" id="report-mode-seatmap" role="tab"
+              aria-selected="false" data-report="seatmap"
+              title="One session as a printable grid">
+        <span aria-hidden="true">&#9636;</span> Seat map
+      </button>
+    </div>
+
+    <!-- ── the register itself ── -->
+    <div id="report-pane-records" role="tabpanel"
+         aria-labelledby="report-mode-records">
+
+    <form class="table-controls" id="report-filters">
+      <div class="field">
+        <label for="report-student">Student ID</label>
+        <input type="text" id="report-student" maxlength="120"
+               placeholder="All students">
+      </div>
+      <div class="field">
+        <label for="report-class">Class</label>
+        <input type="text" id="report-class" list="report-classes"
+               maxlength="120" placeholder="All classes">
+        <datalist id="report-classes"></datalist>
+      </div>
+      <div class="field">
+        <label for="report-section">Section</label>
+        <input type="text" id="report-section" maxlength="40"
+               placeholder="All">
+      </div>
+      <div class="field">
+        <label for="report-from">From date</label>
+        <input type="date" id="report-from">
+      </div>
+      <div class="field">
+        <label for="report-to">To date</label>
+        <input type="date" id="report-to">
+      </div>
+      <div class="field">
+        <label for="report-status">Status</label>
+        <select id="report-status">
+          <option value="">All</option>
+          <option>PRESENT</option><option>LATE</option>
+          <option>PARTIAL</option><option>LEFT_EARLY</option>
+          <option>ABSENT</option><option>UNKNOWN</option>
+          <option>MANUAL_OVERRIDE</option>
+        </select>
+      </div>
+      <div class="field checkbox">
+        <input type="checkbox" id="report-unevaluated">
+        <label for="report-unevaluated">Include never-evaluated</label>
+      </div>
+      <button type="submit" class="btn btn-primary" id="report-run">Run report</button>
+      <button type="button" class="btn btn-quiet" id="report-clear">Clear</button>
+      <button type="button" class="btn" id="report-export">Export CSV</button>
+      <button type="button" class="btn" id="report-export-pdf">Export PDF</button>
+    </form>
+
+    <p class="muted small">
+      <strong>Class</strong> matches the session&rsquo;s class identifier;
+      <strong>Section</strong> matches the student&rsquo;s registered section.
+      <strong>Include never-evaluated</strong> adds students who were expected
+      at a completed session and never evaluated &mdash; they are shown with no
+      status rather than as absent, because nobody decided they were absent.
+    </p>
+
+    <p class="form-error" id="report-error" role="alert" hidden></p>
+
+    <div id="report-summary"></div>
+
+    <div id="report-empty" class="empty" hidden>
+      <h2>No attendance matches these filters</h2>
+      <p>
+        Nothing in the register matches. Attendance appears here once a session
+        has been run from the Live classroom tab and finalised.
+      </p>
+      <p class="muted">
+        An empty report is shown as empty. No row here is estimated.
+      </p>
+    </div>
+
+
+    <!-- The same series as the table below it, standing in a glass box.
+
+         It keeps role="img" and an aria-label carrying every value as text,
+         which is the property that makes a chart readable rather than merely
+         visible. The figure above each bar is plain text on no background. -->
+    <section class="panel" id="report-cube-panel" hidden
+             aria-labelledby="report-cube-heading">
+      <div class="panel-head">
+        <div>
+          <span class="panel-eyebrow">Distribution</span>
+          <h2 id="report-cube-heading">Status, by count</h2>
+        </div>
+        <span class="muted small panel-tools" id="report-cube-note"></span>
+      </div>
+      <div class="glass-cube" id="report-cube"></div>
+    </section>
+
+    <div class="table-scroll" id="report-table-wrap" hidden>
+      <table class="data-table" id="report-table">
+        <caption class="sr-only">Filtered attendance records</caption>
+        <thead>
+          <tr>
+            <th scope="col">Date</th><th scope="col">Class</th>
+            <th scope="col">Student ID</th><th scope="col">Name</th>
+            <th scope="col">Section</th><th scope="col">Status</th>
+            <th scope="col">Presence</th><th scope="col">Duration</th>
+            <th scope="col">Corrected</th><th scope="col">Policy</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    </div><!-- /#report-pane-records -->
+
+    <!-- ── one row per class ── -->
+    <div id="report-pane-classes" role="tabpanel"
+         aria-labelledby="report-mode-classes" hidden>
+
+      <form class="table-controls" id="class-summary-filters">
+        <div class="field">
+          <label for="class-summary-class">Class</label>
+          <input type="text" id="class-summary-class" list="report-classes"
+                 maxlength="120" placeholder="All classes">
+        </div>
+        <div class="field">
+          <label for="class-summary-from">From date</label>
+          <input type="date" id="class-summary-from">
+        </div>
+        <div class="field">
+          <label for="class-summary-to">To date</label>
+          <input type="date" id="class-summary-to">
+        </div>
+        <button type="submit" class="btn btn-primary" id="class-summary-run">
+          Run summary
+        </button>
+        <button type="button" class="btn btn-quiet" id="class-summary-clear">
+          Clear
+        </button>
+        <button type="button" class="btn" id="class-summary-pdf">
+          Export PDF
+        </button>
+      </form>
+
+      <p class="muted small">
+        Every rate below is the one the analytics service computed for that
+        class &mdash; the same number the Overview tab shows. This page asks
+        for those figures and prints them; it calculates none of its own, so
+        two tabs cannot disagree about one class. Worst attendance is listed
+        first, because a summary exists to find the class that needs
+        attention. A class with <strong>no completed session</strong> in the
+        window reports <strong>no rate</strong> rather than 0%.
+      </p>
+
+      <p class="form-error" id="class-summary-error" role="alert" hidden></p>
+
+      <div id="class-summary-totals"></div>
+
+      <div id="class-summary-empty" class="empty" hidden>
+        <h2>No class has a completed session here</h2>
+        <p>
+          Nothing has been summarised because no session in this window has
+          been finalised. A class with no finalised session has no attendance
+          rate, and none is guessed for it.
+        </p>
+      </div>
+
+      <div class="table-scroll" id="class-summary-wrap" hidden>
+        <table class="data-table" id="class-summary-table">
+          <caption class="sr-only">Attendance summarised per class</caption>
+          <thead>
+            <tr>
+              <th scope="col">Class</th><th scope="col">Sessions</th>
+              <th scope="col">Students</th><th scope="col">Expected</th>
+              <th scope="col">Attendance</th><th scope="col">Avg presence</th>
+              <th scope="col">Late</th><th scope="col">Partial</th>
+              <th scope="col">Left early</th><th scope="col">Absent</th>
+              <th scope="col">First</th><th scope="col">Last</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <p class="muted small" id="class-summary-note"></p>
+    </div>
+
+    <!-- ── one row per academic term ── -->
+    <div id="report-pane-terms" role="tabpanel"
+         aria-labelledby="report-mode-terms" hidden>
+
+      <form class="table-controls" id="term-summary-filters">
+        <div class="field">
+          <label for="term-summary-term">Academic term</label>
+          <select id="term-summary-term">
+            <option value="">All terms</option>
+          </select>
+        </div>
+        <button type="submit" class="btn btn-primary" id="term-summary-run">
+          Run summary
+        </button>
+        <button type="button" class="btn" id="term-summary-pdf">
+          Export PDF
+        </button>
+      </form>
+
+      <p class="muted small">
+        Each term&rsquo;s figures are the analytics service&rsquo;s day summary
+        over that term&rsquo;s finalised sessions. Lessons recorded before
+        academic terms existed belong to no term; they are listed as
+        <strong>unassigned</strong> rather than folded into a term nobody filed
+        them under. Expand a term to see its classes.
+      </p>
+
+      <p class="form-error" id="term-summary-error" role="alert" hidden></p>
+
+      <div id="term-summary-empty" class="empty" hidden>
+        <h2>No term has a finalised session</h2>
+        <p>
+          No completed session has been recorded yet, so there is nothing to
+          summarise by term.
+        </p>
+      </div>
+
+      <div id="term-summary-list"></div>
+
+      <p class="muted small" id="term-summary-note"></p>
+    </div>
+
+    <!-- ── one session as a printable grid ── -->
+    <div id="report-pane-seatmap" role="tabpanel"
+         aria-labelledby="report-mode-seatmap" hidden>
+
+      <form class="table-controls" id="seatmap-filters">
+        <div class="field">
+          <label for="seatmap-session">Session</label>
+          <select id="seatmap-session">
+            <option value="">Choose a finalised session</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="seatmap-columns">Columns</label>
+          <input type="number" id="seatmap-columns" min="1" max="12"
+                 step="1" value="6">
+        </div>
+        <button type="submit" class="btn btn-primary" id="seatmap-run">
+          Show grid
+        </button>
+        <button type="button" class="btn" id="seatmap-pdf">
+          Export PDF
+        </button>
+      </form>
+
+      <p class="scope-note" id="seatmap-disclaimer">
+        <strong>This is not a seating plan.</strong> No seat, desk or position
+        is stored anywhere in this system, and none is inferred from the
+        camera. What follows is this session&rsquo;s students in
+        <strong>roll-number order</strong>, laid out in a stable grid so one
+        printed sheet can be carried round a room. The same session always
+        produces the same grid.
+      </p>
+
+      <p class="form-error" id="seatmap-error" role="alert" hidden></p>
+
+      <dl class="meta" id="seatmap-meta"></dl>
+
+      <div id="seatmap-empty" class="empty" hidden>
+        <h2>No session chosen</h2>
+        <p>
+          Choose a finalised session to lay out its students. A session that
+          has not been finalised has no decided attendance to print.
+        </p>
+      </div>
+
+      <div id="seatmap-grid" class="seat-grid"></div>
+
+      <p class="muted small" id="seatmap-note"></p>
+    </div>
+  </section>
+
+
+  <!-- ─────────────── ASSEMBLY ───────────────
+
+       A whole school in one room.
+
+       ASSEMBLY MODE IS A VIEW, NOT A SECOND SYSTEM. It starts a session with
+       POST /api/live/start, reads /api/live/status and /api/live/presence on
+       the same one-second clock the live console uses, pauses and resumes with
+       /api/live/break, ends with /api/live/stop, and cancels or deletes
+       through the ordinary session endpoints. The attendance it produces is
+       computed by the same rules, written to the same tables, and appears in
+       the same sessions list and the same reports.
+
+       There is no attendance logic on this page. assembly.js draws what those
+       endpoints returned and nothing else - which is why an assembly can be
+       found afterwards in Sessions like any other lesson.
+
+       What is different is the ROOM. A classroom is thirty people in rows you
+       can read; an assembly is five hundred, and the useful view of five
+       hundred is a formation seen from the stage, where the shape of the gaps
+       is the information. -->
+  <section id="view-assembly" class="view" hidden
+           aria-labelledby="assembly-heading">
+    <h1 id="assembly-heading" class="sr-only">Assembly mode</h1>
+
+    <div class="assembly-banner">
+      <div>
+        <span class="panel-eyebrow">Whole-school attendance</span>
+        <h2>Assembly mode</h2>
+      </div>
+      <p class="badge-live" id="assembly-live" hidden>
+        <span class="live-dot" aria-hidden="true"></span>
+        <span>Live</span>
+      </p>
+      <span class="assembly-when num" id="assembly-elapsed"></span>
+    </div>
+
+    <p class="scope-note" id="assembly-scope">
+      An assembly is an ordinary session run against a whole-school class, so
+      it is bound by the same roster, the same permissions and the same
+      attendance policy as a lesson. Pick one below, or schedule it in
+      Sessions first.
+    </p>
+
+    <!-- The controls. Two destructive actions, and both of them confirm
+         through the existing session dialogs rather than through a new
+         confirmation of their own. -->
+    <form class="assembly-controls" id="assembly-controls">
+      <div class="field">
+        <label for="assembly-session">Assembly session</label>
+        <select id="assembly-session"></select>
+      </div>
+      <div class="field">
+        <label for="assembly-camera">Camera</label>
+        <select id="assembly-camera"></select>
+      </div>
+      <button type="button" class="btn btn-primary" id="assembly-start">
+        Start assembly</button>
+      <button type="button" class="btn" id="assembly-pause">Pause</button>
+      <button type="button" class="btn" id="assembly-resume">Resume</button>
+      <button type="button" class="btn btn-danger" id="assembly-end">
+        End assembly</button>
+      <button type="button" class="btn" id="assembly-finalize">
+        Finalise attendance</button>
+      <button type="button" class="btn btn-danger" id="assembly-delete">
+        Delete</button>
+      <p class="assembly-control-note" id="assembly-note"></p>
+    </form>
+
+    <p class="form-error" id="assembly-error" role="alert" hidden></p>
+
+    <!-- The six figures the assembly is judged on. Real counts: total and
+         absent come from the session's expected roster, present and uncertain
+         from the presence timeline, and the rate is computed from those two
+         rather than fetched - which is why it is labelled as a live reading
+         and not as the finalised attendance. -->
+    <ul class="cards small" id="assembly-cards"></ul>
+
+    <div class="assembly">
+
+      <!-- THE HALL. One perspective container holding the stage, the rows and
+           the floor, so they read as one space. The rows adapt to the real
+           number of students: ten people make two rows and five hundred make
+           twenty, and neither case is drawn differently. -->
+      <div class="hall" id="assembly-hall">
+        <div class="hall-floor" aria-hidden="true"></div>
+        <div class="scan-plane" aria-hidden="true"></div>
+
+        <div class="hall-inner">
+          <div class="hall-stage">
+            <div class="hall-stage-plate">
+              <span class="hall-stage-word">Stage</span>
+              <span class="hall-stage-who" id="assembly-stage-who">&mdash;</span>
+            </div>
+          </div>
+
+          <!-- Every seat is a real button, named by its own accessible label,
+               in the tab order. The formation is a list of buttons that
+               happens to be arranged in rows - which is the only version of
+               this that works with a keyboard and a screen reader. -->
+          <div class="hall-rows" id="assembly-rows"></div>
+        </div>
+      </div>
+
+      <p class="muted small" id="assembly-formation-note"></p>
+
+      <div class="panel-grid">
+        <section class="pane pane-mid pane-pad" data-reach="true"
+                 aria-labelledby="assembly-ring-heading">
+          <span class="panel-eyebrow">Assembly</span>
+          <h2 id="assembly-ring-heading">Attendance</h2>
+
+          <div class="att-ring" id="assembly-ring">
+            <div class="att-ring-inner">
+              <span class="att-ring-value">&mdash;</span>
+              <span class="att-ring-label">Attendance</span>
+            </div>
+          </div>
+          <ul class="att-breakdown" id="assembly-breakdown"></ul>
+        </section>
+
+        <!-- The assembly camera. Same pipeline, same stream endpoint, same
+             server-drawn overlays as the live classroom - this opens no second
+             camera and triggers no extra inference. -->
+        <section class="pane pane-mid pane-pad" data-reach="true"
+                 aria-labelledby="assembly-camera-heading">
+          <span class="panel-eyebrow">Camera</span>
+          <h2 id="assembly-camera-heading">The hall, as seen</h2>
+
+          <div class="holo-cam" id="assembly-cam" data-live="false">
+            <div class="holo-cam-stage">
+              <img id="assembly-view"
+                   alt="Assembly camera view with detection overlays" hidden>
+              <div class="classroom-idle" id="assembly-idle">
+                <p><strong>No camera view</strong></p>
+                <p class="muted small">Start the assembly to see the hall.</p>
+              </div>
+              <span class="holo-cam-corner holo-cam-corner-tl" aria-hidden="true"></span>
+              <span class="holo-cam-corner holo-cam-corner-tr" aria-hidden="true"></span>
+              <span class="holo-cam-corner holo-cam-corner-bl" aria-hidden="true"></span>
+              <span class="holo-cam-corner holo-cam-corner-br" aria-hidden="true"></span>
+              <div class="holo-cam-scan" aria-hidden="true"></div>
+            </div>
+            <ul class="holo-cam-rail" id="assembly-cam-rail"></ul>
+          </div>
+          <p class="muted small">
+            The complete camera frame, with the pipeline&rsquo;s boxes drawn on
+            top. <strong>Nothing is recorded</strong> &mdash; each frame
+            replaces the last and none is written to disk.
+          </p>
+        </section>
+      </div>
+
+      <!-- The assembly as a path through the room. Each node is a stage the
+           pipeline actually reached; a stage it has not reached has no time
+           and says so with an em dash rather than a guess. -->
+      <section class="pane pane-mid pane-pad"
+               aria-labelledby="assembly-timeline-heading">
+        <span class="panel-eyebrow">Timeline</span>
+        <h2 id="assembly-timeline-heading">Assembly timeline</h2>
+        <div id="assembly-spine"></div>
+      </section>
+
+      <!-- Live statistics, straight off the status endpoint. Every one of
+           these is REPORTED by the running pipeline; a field it did not send
+           renders as "No data" rather than as a zero nobody measured. -->
+      <section class="pane pane-far pane-pad"
+               aria-labelledby="assembly-stats-heading">
+        <span class="panel-eyebrow">Live statistics</span>
+        <h2 id="assembly-stats-heading">Pipeline</h2>
+        <ul class="status-grid" id="assembly-stats"></ul>
+      </section>
+
+      <!-- COMPLETION. The formation settles and this takes its place. The
+           figures are the finalised ones off /api/live/stop, which are not
+           necessarily the live counts above: the attendance rules run at
+           finalisation, and a student present on the timeline can still be
+           LATE or PARTIAL once duration is applied. -->
+      <section class="pane pane-near pane-pad assembly-summary"
+               id="assembly-summary" hidden
+               aria-labelledby="assembly-summary-heading">
+        <div class="assembly-summary-head">
+          <span class="assembly-done">Assembly completed</span>
+          <h2 id="assembly-summary-heading">Summary</h2>
+        </div>
+
+        <dl class="meta" id="assembly-summary-meta"></dl>
+        <ul class="cards small" id="assembly-summary-cards"></ul>
+        <p class="muted small" id="assembly-summary-note"></p>
+
+        <div class="table-controls">
+          <button type="button" class="btn btn-primary"
+                  id="assembly-open-attendance">View attendance</button>
+          <button type="button" class="btn" id="assembly-open-report">
+            View report</button>
+          <button type="button" class="btn" id="assembly-summary-finalize">
+            Finalise</button>
+        </div>
+      </section>
+    </div>
+  </section>
+
+  <!-- ─────────────── ASSISTANT ─────────────── -->
+  <section id="view-assistant" class="view" hidden
+           aria-labelledby="assistant-heading">
+    <div class="hero">
+      <span class="hero-mark" aria-hidden="true">CI</span>
+      <div>
+        <h1 id="assistant-heading" class="hero-title">ClassVision
+          Intelligence</h1>
+        <p class="hero-sub">Analytics query layer &middot; offline</p>
+      </div>
+    </div>
+    <p class="scope-note">
+      Questions about attendance that has <strong>already been recorded</strong>.
+      Every answer is produced by calling the same analytics the dashboard
+      uses, and names the function behind it and the page that shows the same
+      number &mdash; so a figure here can be <strong>checked</strong> rather
+      than believed. Nothing here computes an attendance figure of its own.
+    </p>
+
+    <section class="panel" aria-labelledby="assistant-ask-heading">
+      <h2 id="assistant-ask-heading" class="sr-only">Your question</h2>
+
+      <form id="assistant-form">
+        <div class="field">
+          <label for="assistant-question">Your question</label>
+          <input type="text" id="assistant-question" maxlength="400"
+                 autocomplete="off" spellcheck="false"
+                 placeholder="What is the attendance rate for CSE-A?">
+        </div>
+        <div class="table-controls">
+          <button type="submit" class="btn btn-primary" id="assistant-ask">
+            Ask
+          </button>
+          <button type="button" class="btn btn-quiet" id="assistant-clear">
+            Clear
+          </button>
+        </div>
+      </form>
+
+      <p class="form-error" id="assistant-error" role="alert" hidden></p>
+
+      <!-- aria-live, because the answer replaces itself in place and a screen
+           reader would otherwise never be told it arrived. polite, not
+           assertive: an answer is not an alarm. -->
+      <div id="assistant-answer" aria-live="polite" aria-atomic="true"></div>
+    </section>
+
+    <section class="panel" aria-labelledby="assistant-examples-heading">
+      <h2 id="assistant-examples-heading">What it can be asked</h2>
+      <p class="muted small">
+        A closed list, published rather than guessed at. This is a pattern
+        matcher, <strong>not a language model</strong> &mdash; there is no model
+        here and no request leaves this machine &mdash; so a question phrased
+        differently from these may not be understood. When it is not, it says
+        so instead of answering something else.
+      </p>
+      <ul class="example-list" id="assistant-examples"></ul>
+
+      <h3>What it will not do</h3>
+      <ul class="muted small" id="assistant-limits"></ul>
+    </section>
+  </section>
+
+  <!-- ─────────────── ACADEMIC ─────────────── -->
+  <section id="view-academic" class="view" hidden
+           aria-labelledby="academic-heading">
+    <div class="detail-head">
+      <h1 id="academic-heading">Academic terms</h1>
+      <button type="button" class="btn btn-primary" id="add-term">
+        + Add term
+      </button>
+    </div>
+    <p class="scope-note">
+      Years and semesters, and moving students into them. A student is
+      permanent; their class, section and roll number are facts about a
+      <strong>period</strong>. Promoting creates a new period and
+      <strong>never edits the one before it</strong>, which is what keeps last
+      term&rsquo;s attendance describing the class a student was actually in
+      when it was taken. Creating a term touches nobody and promotes nobody.
+    </p>
+
+    <p class="form-error" id="academic-error" role="alert" hidden></p>
+
+    <section class="panel" aria-labelledby="terms-heading">
+      <h2 id="terms-heading">Terms</h2>
+      <p class="muted small">
+        Exactly one term is current. Activating a term closes the previous one
+        rather than deleting it &mdash; its enrolments and its attendance stay
+        exactly where they were.
+      </p>
+
+      <div id="terms-empty" class="empty" hidden>
+        <h2>No academic term has been created</h2>
+        <p>
+          Sessions recorded with no term still work and are reported as
+          <strong>unassigned</strong>. A term is what lets a student&rsquo;s
+          class and roll number change at the end of a year without rewriting
+          the register behind them.
+        </p>
+      </div>
+
+      <div class="table-scroll" id="terms-wrap" hidden>
+        <table class="data-table" id="terms-table">
+          <caption class="sr-only">Academic years and semesters</caption>
+          <thead>
+            <tr>
+              <th scope="col">Year</th><th scope="col">Semester</th>
+              <th scope="col">Starts</th><th scope="col">Ends</th>
+              <th scope="col">Status</th><th scope="col">Students</th>
+              <th scope="col">Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="promotion-heading">
+      <h2 id="promotion-heading">Promote students into a term</h2>
+      <p class="muted small">
+        Choose who moves and where they land. Anything left blank is
+        <strong>carried forward</strong> from the student&rsquo;s current
+        record &mdash; never blanked and never invented. Only
+        <strong>ACTIVE</strong> students are promoted: putting somebody who
+        transferred out into this term&rsquo;s register would generate an
+        absence for a person who is not there.
+      </p>
+
+      <form class="table-controls" id="promotion-filters">
+        <div class="field">
+          <label for="promotion-term">Into term</label>
+          <select id="promotion-term">
+            <option value="">Choose a term</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="promotion-from-class">From class</label>
+          <input type="text" id="promotion-from-class" maxlength="120"
+                 placeholder="All classes">
+        </div>
+        <div class="field">
+          <label for="promotion-from-section">From section</label>
+          <input type="text" id="promotion-from-section" maxlength="40"
+                 placeholder="All">
+        </div>
+        <div class="field">
+          <label for="promotion-to-class">New class</label>
+          <input type="text" id="promotion-to-class" maxlength="120"
+                 placeholder="Carry forward">
+        </div>
+        <div class="field">
+          <label for="promotion-to-section">New section</label>
+          <input type="text" id="promotion-to-section" maxlength="40"
+                 placeholder="Carry forward">
+        </div>
+        <button type="submit" class="btn btn-primary" id="promotion-preview">
+          Preview
+        </button>
+        <button type="button" class="btn btn-quiet" id="promotion-clear">
+          Clear
+        </button>
+      </form>
+
+      <!-- The allocation file. Three columns, read in the browser and parsed
+           by the server, so a class list a school office already has does not
+           have to be retyped. -->
+      <div class="field">
+        <label for="promotion-allocation">
+          Roll and section allocation (CSV, optional)
+        </label>
+        <input type="file" id="promotion-allocation" accept=".csv,text/csv">
+        <p class="muted small">
+          Columns: <code>student_id</code>, and any of
+          <code>class_name</code>, <code>section</code>,
+          <code>roll_number</code>. A column the file does not have means
+          &ldquo;carry the previous value forward&rdquo;, not &ldquo;blank
+          it&rdquo;. Unknown columns are ignored.
+        </p>
+      </div>
+
+      <p id="promotion-allocation-state" class="muted small"></p>
+
+      <div id="promotion-preview-empty" class="empty" hidden>
+        <h2>Nothing previewed yet</h2>
+        <p>
+          Choose a term and press Preview. Nothing is changed until the
+          promotion is confirmed.
+        </p>
+      </div>
+
+      <div id="promotion-summary"></div>
+
+      <div class="table-scroll" id="promotion-wrap" hidden>
+        <table class="data-table" id="promotion-table">
+          <caption class="sr-only">What this promotion would change</caption>
+          <thead>
+            <tr>
+              <th scope="col">Student</th><th scope="col">Name</th>
+              <th scope="col">From</th><th scope="col">To</th>
+              <th scope="col">Carried forward</th>
+              <th scope="col">Already in this term</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="table-controls" id="promotion-actions" hidden>
+        <button type="button" class="btn btn-primary" id="promotion-run">
+          Promote these students
+        </button>
+      </div>
+    </section>
+  </section>
+
+  <!-- ─────────────── ADMINISTRATION ─────────────── -->
+  <section id="view-admin" class="view" hidden aria-labelledby="admin-heading">
+    <div class="detail-head">
+      <h1 id="admin-heading">Administration</h1>
+      <button type="button" class="btn btn-primary" id="add-user">+ Add Teacher</button>
+    </div>
+    <p class="scope-note">
+      Accounts and the classes they are responsible for. Every rule here is
+      enforced by the server: hiding this tab from a teacher is a courtesy,
+      not the permission.
+    </p>
+
+    <div class="table-scroll">
+      <table class="data-table" id="users-table">
+        <caption class="sr-only">Teacher and administrator accounts</caption>
+        <thead>
+          <tr>
+            <th scope="col">Username</th><th scope="col">Name</th>
+            <th scope="col">Role</th><th scope="col">Assigned classes</th>
+            <th scope="col">Status</th><th scope="col">Last signed in</th>
+            <th scope="col">Actions</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+  </section>
+
+
+  <!-- ─────────────── CLASSES ───────────────
+
+       Its own section rather than a panel bolted onto the session register.
+       Sessions answers "what is scheduled"; this answers "what classes exist
+       and what have they done", and the two were never the same question. -->
+  <section id="view-classes" class="view" hidden
+           aria-labelledby="classes-view-heading">
+    <div class="detail-head">
+      <h1 id="classes-view-heading">Classes</h1>
+      <button type="button" class="btn btn-quiet" id="classes-refresh">
+        Refresh</button>
+    </div>
+
+    <p class="scope-note">
+      Derived, not stored: there is no classes table in this schema. A class
+      is whatever a session said its class_id was, so a class exists here for
+      as long as a session refers to it. Scheduling is done in
+      <strong>Sessions</strong> &mdash; this page does not duplicate it.
+    </p>
+
+    <section class="panel data-panel" aria-labelledby="classes-heading">
+      <div class="panel-head">
+        <div>
+          <span class="panel-eyebrow">Derived from sessions</span>
+          <h2 id="classes-heading">Every class with a session</h2>
+        </div>
+        <span class="muted small panel-tools" id="classes-count"></span>
+      </div>
+      <p class="muted small">
+        Deleting one deletes its <strong>sessions</strong>; any session that
+        produced attendance is <strong>refused and kept</strong>, because
+        three tables cascade from it and its register would go too.
+      </p>
+      <p class="form-error" id="classes-error" role="alert" hidden></p>
+      <div id="classes-empty" class="empty" hidden>
+        <h2>No classes yet</h2>
+        <p>A class appears here once a session has been scheduled for it.</p>
+      </div>
+      <div class="table-scroll" id="classes-wrap" hidden>
+        <table class="data-table" id="classes-table">
+          <caption class="sr-only">Classes that have sessions</caption>
+          <thead>
+            <tr>
+              <th scope="col">Class</th><th scope="col">Sessions</th>
+              <th scope="col">Completed</th><th scope="col">First</th>
+              <th scope="col">Last</th><th scope="col">Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </section>
+
+  <!-- ─────────────── STUDENT PORTAL LOGINS ───────────────
+
+       Lifted out of Administration, which had five unrelated jobs in one
+       scroll. Credentials are their own concern and their own page: the
+       generated passwords shown here are emptied the moment this view is
+       left, which is only a meaningful rule if leaving it is a navigation. -->
+  <section id="view-logins" class="view" hidden
+           aria-labelledby="portal-accounts-heading">
+    <div class="detail-head">
+      <h1 id="portal-accounts-heading">Student portal logins</h1>
+      <div class="row-actions">
+        <button type="button" class="btn" id="portal-issue-missing">
+          Issue to all students
+        </button>
+        <button type="button" class="btn btn-primary" id="add-portal-account">
+          + Issue login
+        </button>
+      </div>
+    </div>
+
+    <p class="scope-note">
+      A student signing in here sees their own attendance and nothing else.
+      These credentials are kept in a separate table from staff accounts, so
+      a portal login can never be given a teacher&rsquo;s permissions.
+      <strong>Suspend</strong> is reversible and keeps the account;
+      <strong>Remove</strong> deletes the password only and leaves every
+      attendance record untouched.
+    </p>
+
+    <section class="panel" aria-labelledby="portal-issue-heading">
+      <h2 id="portal-issue-heading" class="sr-only">Issuing logins</h2>
+      <p class="muted small">
+        <strong>Issue to all students</strong> gives every registered student
+        who has not got one a login: the username is their
+        <strong>Student ID</strong> and the password is generated. A student
+        who already has a login is skipped and their password is left alone,
+        so pressing it twice cannot lock a class out.
+        Each password is shown <strong>once</strong> &mdash; it is stored only
+        as a hash and can be reset, never read back.
+      </p>
+
+      <!-- Where the generated passwords are shown, once. Emptied when this
+           view is left, so a list of credentials is not left sitting on a
+           projector for the next lesson. -->
+      <div id="portal-issued" hidden></div>
+      <div class="table-scroll">
+        <table class="data-table" id="portal-accounts-table">
+          <caption class="sr-only">Student portal accounts</caption>
+          <thead>
+            <tr>
+              <th scope="col">Student</th><th scope="col">Class</th>
+              <th scope="col">Username</th><th scope="col">Status</th>
+              <th scope="col">Last signed in</th><th scope="col">Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </section>
+
+  <!-- ─────────────── ABSENCE ALERTS ─────────────── -->
+  <section id="view-alerts" class="view" hidden
+           aria-labelledby="alerts-heading">
+    <div class="detail-head">
+      <h1 id="alerts-heading">Absence alerts</h1>
+      <div class="row-actions">
+        <button type="button" class="btn" id="alerts-defaults">
+          Add suggested rules
+        </button>
+        <button type="button" class="btn" id="alerts-dry-run">
+          Preview who would be contacted
+        </button>
+        <button type="button" class="btn btn-primary" id="alerts-run">
+          Run now
+        </button>
+      </div>
+    </div>
+
+    <!-- Whether anything can actually leave the building. Filled from
+         /api/alerts/delivery, which reports the host and From address and
+         never the password. -->
+    <p class="delivery-state" id="alerts-delivery">
+      <span class="sym" aria-hidden="true">&middot;</span>
+      <span id="alerts-delivery-text">Checking how alerts are delivered…</span>
+    </p>
+
+    <section class="panel" aria-labelledby="alert-rules-heading">
+      <h2 id="alert-rules-heading">Rules</h2>
+      <p class="muted small">
+        A rule is a row, not a constant. Set the threshold a school actually
+        uses. <strong>Absent days</strong> counts whole days a student was in
+        no session at all; <strong>absent sessions</strong> counts periods in
+        a row, which is a different number where a class meets twice a day.
+      </p>
+
+      <div class="table-scroll">
+        <table class="data-table" id="alert-rules-table">
+          <caption class="sr-only">Attendance alert rules</caption>
+          <thead>
+            <tr>
+              <th scope="col">Rule</th><th scope="col">Type</th>
+              <th scope="col">Threshold</th><th scope="col">Scope</th>
+              <th scope="col">Enabled</th><th scope="col">Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="notifications-heading">
+      <h2 id="notifications-heading">Recently raised</h2>
+      <div class="table-scroll">
+        <table class="data-table" id="notifications-table">
+          <caption class="sr-only">Notifications raised</caption>
+          <thead>
+            <tr>
+              <th scope="col">When</th><th scope="col">Student</th>
+              <th scope="col">Rule</th><th scope="col">Measured</th>
+              <th scope="col">Delivery</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </section>
+
+  <!-- ─────────────── MODEL REGISTRY ───────────────
+
+       A view of its own, which is what the rail always implied: "Model
+       registry" used to be a link that scrolled the Administration page to a
+       panel, and a destination that is really a scroll position is how a
+       navigation item loses people's trust. -->
+  <section id="view-models" class="view" hidden
+           aria-labelledby="models-heading">
+    <div class="detail-head">
+      <div>
+        <span class="panel-eyebrow">Inference</span>
+        <h1 id="models-heading">Recognition models</h1>
+      </div>
+      <button type="button" class="btn" id="models-rollback">
+        Roll back to the baseline
+      </button>
+    </div>
+
+    <p class="scope-note">
+      SFace is the production recogniser. A custom model is
+      <strong>experimental</strong> until it has been evaluated on identities
+      the training never saw and then explicitly activated; training or
+      registering one changes nothing about what the camera recognises.
+      Activation is the only thing on this page that does.
+    </p>
+
+    <p class="delivery-state" id="models-active">
+      <span aria-hidden="true">&#9679;</span>
+      <span id="models-active-text">Checking which model is in production…</span>
+    </p>
+
+    <p class="form-error" id="models-error" role="alert" hidden></p>
+
+    <section class="panel" aria-labelledby="models-table-heading">
+      <h2 id="models-table-heading" class="sr-only">Registered models</h2>
+      <div class="table-scroll" id="models-wrap">
+        <table class="data-table" id="models-table">
+          <caption class="sr-only">
+            Registered recognition models and their measured numbers
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Model</th><th scope="col">Version</th>
+              <th scope="col">Kind</th><th scope="col">Status</th>
+              <th scope="col">Accuracy</th><th scope="col">Precision</th>
+              <th scope="col">Recall</th>
+              <th scope="col">False accept</th>
+              <th scope="col">Identities</th><th scope="col">Held out</th>
+              <th scope="col">Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <p class="muted small" id="models-gate"></p>
+      <p class="muted small" id="models-note"></p>
+    </section>
+  </section>
+
+  <!-- ─────────────── ACTIVITY LOG ─────────────── -->
+  <section id="view-audit" class="view" hidden
+           aria-labelledby="audit-heading">
+    <div class="detail-head">
+      <h1 id="audit-heading">Activity log</h1>
+      <button type="button" class="btn btn-quiet" id="audit-refresh">
+        Refresh</button>
+    </div>
+
+    <p class="scope-note">
+      What was done, by whom, and when. Holds no password, no embedding and
+      nothing biometric &mdash; only that an action happened.
+    </p>
+
+    <section class="panel" aria-labelledby="audit-table-heading">
+      <h2 id="audit-table-heading" class="sr-only">Recent activity</h2>
+      <div class="table-scroll">
+        <table class="data-table" id="audit-table">
+          <caption class="sr-only">Audit log</caption>
+          <thead>
+            <tr><th scope="col">When</th><th scope="col">Who</th>
+                <th scope="col">Action</th><th scope="col">Subject</th>
+                <th scope="col">Detail</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </section>
+
+  <footer class="footer">
+    <p>
+      <strong>Local classroom dashboard.</strong>
+      <span id="footer-auth">
+        Local password authentication is implemented (PBKDF2 hashing, session
+        cookies, server-enforced roles). It has not been independently
+        reviewed and is not evaluated production security.
+      </span>
+      Liveness detection is a research prototype and has not been evaluated
+      against real presentation attacks; it is not a security control.
+      Video authenticity analysis is a research baseline, has never been
+      evaluated against real manipulated video, and does not detect deepfakes.
+      Attendance accuracy has not been validated on a real classroom
+      population. No biometric data is exposed by this interface.
+    </p>
+  </footer>
+</main>
+
+</div><!-- /.workspace -->
+</div><!-- /.app-shell -->
+
+<!--
+  THE STUDENT PORTAL
+
+  A whole page rather than the staff dashboard with rows hidden. A student
+  wants one number and the sessions behind it, and building that out of a
+  teacher's table by hiding columns is how a hidden column eventually gets
+  un-hidden by a CSS change.
+
+  Nothing here is reachable without a portal session, and every endpoint it
+  calls takes the student from the session token rather than from the page -
+  so there is no id in any URL below to change.
+-->
+<main id="portal-main" class="view" hidden aria-labelledby="portal-heading">
+  <div class="portal-hero">
+    <div>
+      <div class="portal-ring" id="portal-ring" role="img"
+           aria-labelledby="portal-ring-label">
+        <span id="portal-ring-value">—</span>
+        <small>attended</small>
+      </div>
+      <p class="sr-only" id="portal-ring-label">Your attendance percentage</p>
+    </div>
+
+    <div>
+      <h1 id="portal-heading">Your attendance</h1>
+      <p class="muted" id="portal-who"></p>
+      <p class="portal-note" id="portal-summary"></p>
+    </div>
+  </div>
+
+  <ul class="cards" id="portal-cards"></ul>
+
+  <section class="panel" aria-labelledby="portal-history-heading">
+    <h2 id="portal-history-heading">Every session you were expected at</h2>
+    <p class="muted small">
+      What was recorded, and why. A decision you believe is wrong is a
+      conversation with your teacher, not a button here &mdash; attendance is
+      corrected by the person who took it.
+    </p>
+    <div class="table-scroll">
+      <table class="data-table" id="portal-history">
+        <caption class="sr-only">Your attendance history</caption>
+        <thead>
+          <tr>
+            <th scope="col">Date</th><th scope="col">Class</th>
+            <th scope="col">Status</th><th scope="col">Reason</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="pager" id="portal-pager"></div>
+  </section>
+
+  <footer class="footer">
+    <p>
+      <strong>Your own record only.</strong> This page shows the attendance
+      the school recorded for you. It holds no photograph, no face data and
+      nobody else's information.
+    </p>
+  </footer>
+</main>
+
+<!-- A student changing the password they were handed. Shown instead of the
+     portal until it has been done, because a first password written on a
+     slip of paper should not still work next term. -->
+<dialog id="portal-password-dialog" aria-labelledby="portal-password-title">
+  <form method="dialog" class="dialog-body">
+    <h2 id="portal-password-title">Choose your own password</h2>
+    <p class="muted small">
+      You are signed in with the password the school gave you. Choose one only
+      you know before going on. You will be signed out and asked for the new
+      one.
+    </p>
+
+    <div class="field">
+      <label for="portal-current-password">The password you were given</label>
+      <input type="password" id="portal-current-password" maxlength="200"
+             autocomplete="current-password" required>
+    </div>
+
+    <div class="field">
+      <label for="portal-new-password">Your new password</label>
+      <input type="password" id="portal-new-password" maxlength="200"
+             autocomplete="new-password" required>
+    </div>
+
+    <p class="muted small">
+      At least 10 characters. It is stored only as a PBKDF2 hash and cannot be
+      recovered &mdash; if you forget it, the school office sets a new one.
+    </p>
+
+    <p class="form-error" id="portal-password-error" role="alert" hidden></p>
+
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-primary" id="portal-password-save">
+        Save and sign in again
+      </button>
+      <button type="button" class="btn btn-quiet" id="portal-password-out">
+        Sign out
+      </button>
+    </div>
+  </form>
+</dialog>
+
+<!-- issue a student portal login -->
+<dialog id="portal-account-dialog" aria-labelledby="portal-account-title">
+  <form method="dialog" class="dialog-body">
+    <h2 id="portal-account-title">Issue a portal login</h2>
+    <p class="muted small">
+      The student must already be registered. They will be asked to replace
+      this password the first time they sign in.
+    </p>
+
+    <div class="field">
+      <label for="portal-account-student">Student</label>
+      <select id="portal-account-student"></select>
+    </div>
+
+    <div class="field">
+      <label for="portal-account-username">Username</label>
+      <input type="text" id="portal-account-username" maxlength="64"
+             autocapitalize="none" spellcheck="false"
+             placeholder="defaults to the Student ID">
+    </div>
+
+    <div class="field">
+      <label for="portal-account-password">First password</label>
+      <input type="text" id="portal-account-password" maxlength="200"
+             placeholder="leave blank to generate one">
+    </div>
+
+    <p class="muted small">
+      Leave both blank and the login becomes the student&rsquo;s
+      <strong>Student ID</strong> with a generated password, which is shown
+      once after it is issued. A password you type is shown in plain text on
+      purpose: you have to be able to write it down for the student. Either
+      way it is stored only as a hash and cannot be read back.
+    </p>
+
+    <p class="form-error" id="portal-account-error" role="alert" hidden></p>
+
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-primary" id="portal-account-save">
+        Issue login
+      </button>
+      <button type="button" class="btn btn-quiet" id="portal-account-close">
+        Cancel
+      </button>
+    </div>
+  </form>
+</dialog>
+
+<!-- edit a session that was scheduled wrongly -->
+<dialog id="session-edit-dialog" aria-labelledby="session-edit-title">
+  <form method="dialog" class="dialog-body">
+    <h2 id="session-edit-title">Edit this session</h2>
+    <p class="muted small" id="session-edit-who"></p>
+
+    <div class="field">
+      <label for="session-edit-class">Class</label>
+      <input type="text" id="session-edit-class" maxlength="120">
+    </div>
+
+    <div class="field-row">
+      <div class="field">
+        <label for="session-edit-section">Section</label>
+        <input type="text" id="session-edit-section" maxlength="40">
+      </div>
+      <div class="field">
+        <label for="session-edit-teacher">Teacher</label>
+        <input type="text" id="session-edit-teacher" maxlength="120">
+      </div>
+    </div>
+
+    <div class="field-row">
+      <div class="field">
+        <label for="session-edit-date">Date</label>
+        <input type="date" id="session-edit-date">
+      </div>
+      <div class="field">
+        <label for="session-edit-start">Starts</label>
+        <input type="time" id="session-edit-start">
+      </div>
+      <div class="field">
+        <label for="session-edit-end">Ends</label>
+        <input type="time" id="session-edit-end">
+      </div>
+    </div>
+
+    <!-- Shown only when the server has refused the change once, because the
+         session already has attendance. The records are never recomputed: a
+         register is what was observed, and re-deriving it from an edited
+         plan would be inventing a different lesson. -->
+    <div class="field checkbox" id="session-edit-confirm-field" hidden>
+      <input type="checkbox" id="session-edit-confirm">
+      <label for="session-edit-confirm">
+        This session already has attendance. Change the window anyway and flag
+        it for review &mdash; existing records are kept exactly as they are.
+      </label>
+    </div>
+
+    <p class="form-error" id="session-edit-error" role="alert" hidden></p>
+
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-primary" id="session-edit-save">
+        Save changes
+      </button>
+      <button type="button" class="btn btn-quiet" id="session-edit-close">
+        Cancel
+      </button>
+    </div>
+  </form>
+</dialog>
+
+<!-- register a student and capture face samples -->
+<dialog id="student-dialog" aria-labelledby="student-dialog-title">
+  <form method="dialog" class="dialog-body" id="student-form">
+    <h2 id="student-dialog-title">Add a student</h2>
+
+    <div class="field-row">
+      <div class="field">
+        <label for="new-student-id">Student ID</label>
+        <input type="text" id="new-student-id" maxlength="64" required
+               autocomplete="off" placeholder="e.g. STU002">
+      </div>
+      <div class="field grow">
+        <label for="new-student-name">Name</label>
+        <input type="text" id="new-student-name" maxlength="120" required
+               autocomplete="off">
+      </div>
+    </div>
+
+    <div class="field-row">
+      <div class="field">
+        <label for="new-student-roll">Roll number</label>
+        <input type="text" id="new-student-roll" maxlength="40" required
+               autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="new-student-year">Year</label>
+        <input type="text" id="new-student-year" list="student-years"
+               maxlength="60" autocomplete="off" placeholder="e.g. 3rd Year">
+      </div>
+      <div class="field">
+        <label for="new-student-class">Class</label>
+        <input type="text" id="new-student-class" maxlength="120" required
+               autocomplete="off" placeholder="e.g. CSE(AI)">
+      </div>
+      <div class="field">
+        <label for="new-student-section">Section</label>
+        <input type="text" id="new-student-section" maxlength="40" required
+               autocomplete="off" placeholder="e.g. C">
+      </div>
+    </div>
+
+    <!-- Guardian contact. Optional, and the only reason an attendance alert
+         has anywhere to go. Visible to a Super Admin; a teacher sees whether
+         alerts are switched on but not the number itself. -->
+    <fieldset class="field-group" id="new-student-parent-group">
+      <legend>Parent or guardian <span class="muted small">(optional)</span></legend>
+      <div class="field-row">
+        <div class="field grow">
+          <label for="new-student-parent-name">Name</label>
+          <input type="text" id="new-student-parent-name" maxlength="120"
+                 autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="new-student-parent-phone">Phone</label>
+          <input type="tel" id="new-student-parent-phone" maxlength="40"
+                 autocomplete="off">
+        </div>
+        <div class="field grow">
+          <label for="new-student-parent-email">Email</label>
+          <input type="email" id="new-student-parent-email" maxlength="200"
+                 autocomplete="off">
+        </div>
+      </div>
+      <div class="field checkbox">
+        <input type="checkbox" id="new-student-notify" checked>
+        <label for="new-student-notify">Send attendance alerts about this
+          student</label>
+      </div>
+      <p class="muted small">
+        Used only to send the attendance alerts configured under Alerts. A
+        contact detail is never written into an alert's delivery log, and no
+        message is sent unless a messaging provider has been set up.
+      </p>
+    </fieldset>
+
+    <div class="field">
+      <label for="new-student-camera">Camera index</label>
+      <div class="field-row">
+        <input type="number" id="new-student-camera" min="0" max="64" step="1"
+               inputmode="numeric" placeholder="default"
+               list="available-cameras">
+        <button type="button" class="btn btn-quiet" id="new-student-detect">
+          Detect cameras
+        </button>
+      </div>
+      <p class="muted small" id="new-student-camera-found"></p>
+    </div>
+
+    <p class="muted small">
+      <strong>Save &amp; Enroll Face</strong> registers the student first, then
+      captures <strong id="enroll-required-note">5</strong> samples from the
+      camera on this computer. <strong>No photograph is taken or stored</strong>
+      &mdash; each frame becomes a numeric face embedding and is then
+      discarded. A student must be enrolled before the camera can recognise
+      them in a live classroom. If the capture is cancelled the student
+      stays registered and is simply shown as not enrolled, which you can
+      finish later.
+    </p>
+
+    <!-- The enrollment camera. The full frame, for the same reason: being
+         told to "look at the camera" is useless if you cannot tell whether
+         you are in shot. -->
+    <div class="classroom classroom-small" id="enroll-camera" hidden>
+      <div class="classroom-stage">
+        <img id="enroll-view" alt="Enrollment camera view" hidden>
+        <div class="classroom-idle" id="enroll-camera-idle">
+          <p class="muted small">Opening the camera&hellip;</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="enroll-progress" id="enroll-progress" hidden role="status">
+      <div class="enroll-line">
+        <span class="sym" aria-hidden="true" id="enroll-symbol">&#9679;</span>
+        <strong id="enroll-state">Idle</strong>
+        <span id="enroll-count" class="live-value"></span>
+      </div>
+      <div class="bar-track">
+        <div class="bar-fill" id="enroll-bar" style="width:0%"></div>
+      </div>
+      <p class="muted small" id="enroll-message"></p>
+    </div>
+
+    <p class="form-error" id="new-student-error" role="alert" hidden></p>
+
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-primary" id="student-enroll">Save &amp; Enroll Face</button>
+      <button type="button" class="btn" id="student-register-only">Save without camera</button>
+      <button type="button" class="btn btn-quiet" id="student-cancel-enroll" hidden>Cancel enrollment</button>
+      <button type="button" class="btn btn-quiet" id="student-close">Close</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- edit a registered student -->
+<dialog id="student-edit-dialog" aria-labelledby="student-edit-title">
+  <form method="dialog" class="dialog-body" id="student-edit-form">
+    <h2 id="student-edit-title">Edit student</h2>
+    <p class="muted small">
+      The student ID is the key that attendance records, presence segments and
+      the face enrollment all reference, so it cannot be changed here. Editing
+      these details never touches the face samples.
+    </p>
+
+    <div class="field-row">
+      <div class="field">
+        <label for="edit-student-id">Student ID</label>
+        <input type="text" id="edit-student-id" readonly>
+      </div>
+      <div class="field grow">
+        <label for="edit-student-name">Name</label>
+        <input type="text" id="edit-student-name" maxlength="120" required
+               autocomplete="off">
+      </div>
+    </div>
+
+    <div class="field-row">
+      <div class="field">
+        <label for="edit-student-roll">Roll number</label>
+        <input type="text" id="edit-student-roll" maxlength="40"
+               autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="edit-student-year">Year</label>
+        <input type="text" id="edit-student-year" list="student-years"
+               maxlength="60" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="edit-student-class">Class</label>
+        <input type="text" id="edit-student-class" maxlength="120"
+               autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="edit-student-section">Section</label>
+        <input type="text" id="edit-student-section" maxlength="40"
+               autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="edit-student-status">Status</label>
+        <select id="edit-student-status">
+          <option value="ACTIVE">Active</option>
+          <option value="INACTIVE">Inactive</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Hidden for a teacher, who is not shown a guardian's contact and
+         cannot write one. The switch stays available to them. -->
+    <fieldset class="field-group" id="edit-student-parent-group">
+      <legend>Parent or guardian</legend>
+      <div class="field-row">
+        <div class="field grow">
+          <label for="edit-student-parent-name">Name</label>
+          <input type="text" id="edit-student-parent-name" maxlength="120"
+                 autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="edit-student-parent-phone">Phone</label>
+          <input type="tel" id="edit-student-parent-phone" maxlength="40"
+                 autocomplete="off">
+        </div>
+        <div class="field grow">
+          <label for="edit-student-parent-email">Email</label>
+          <input type="email" id="edit-student-parent-email" maxlength="200"
+                 autocomplete="off">
+        </div>
+      </div>
+    </fieldset>
+
+    <div class="field checkbox">
+      <input type="checkbox" id="edit-student-notify">
+      <label for="edit-student-notify">Send attendance alerts about this
+        student</label>
+    </div>
+
+    <p class="muted small" id="edit-student-enrollment"></p>
+    <p class="form-error" id="edit-student-error" role="alert" hidden></p>
+
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-primary" id="edit-student-save">Save changes</button>
+      <button type="button" class="btn" id="edit-student-enroll">Enroll face</button>
+      <button type="button" class="btn btn-quiet" id="edit-student-remove">Remove&hellip;</button>
+      <button type="button" class="btn btn-quiet" id="edit-student-close">Close</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- deactivate or delete a student -->
+<dialog id="student-remove-dialog" aria-labelledby="student-remove-title">
+  <form method="dialog" class="dialog-body">
+    <h2 id="student-remove-title">Remove a student</h2>
+    <p id="student-remove-who" class="muted small"></p>
+
+    <div id="student-remove-impact" class="evidence"></div>
+
+    <p class="muted small">
+      <strong>Deactivate</strong> keeps every attendance record, presence
+      segment and expected-student row, and only takes the student out of the
+      active roster.
+    </p>
+
+    <p class="muted small" id="student-delete-explainer" hidden>
+      <strong>Delete permanently</strong> removes the student, their face
+      samples and everything listed above &mdash; it cannot be undone.
+    </p>
+
+    <!-- Shown to a teacher in place of the button. The server refuses the
+         call regardless; this only explains the absence instead of leaving a
+         gap where a control used to be. -->
+    <p class="muted small" id="student-delete-note" hidden>
+      Permanent deletion is a Super Admin action. Deactivating keeps the
+      student's history and is the usual answer when somebody leaves; ask a
+      Super Admin if the record really has to be destroyed.
+    </p>
+
+    <div class="field" id="student-delete-confirm-field" hidden>
+      <label for="student-delete-confirm">
+        Type <strong><span id="student-delete-id"></span></strong> to confirm
+        permanent deletion
+      </label>
+      <input type="text" id="student-delete-confirm" maxlength="64"
+             autocomplete="off" autocapitalize="none" spellcheck="false">
+    </div>
+
+    <p class="form-error" id="student-remove-error" role="alert" hidden></p>
+
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-primary" id="student-deactivate">Deactivate</button>
+      <button type="button" class="btn btn-danger" id="student-delete">Delete permanently</button>
+      <button type="button" class="btn btn-quiet" id="student-remove-close">Cancel</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- cancel or delete a classroom session -->
+<dialog id="session-remove-dialog" aria-labelledby="session-remove-title">
+  <form method="dialog" class="dialog-body">
+    <h2 id="session-remove-title">Remove a session</h2>
+    <p id="session-remove-who" class="muted small"></p>
+
+    <dl class="meta" id="session-remove-meta"></dl>
+
+    <div id="session-remove-impact" class="evidence"></div>
+
+    <p class="muted small">
+      <strong>Cancel session</strong> keeps the row and everything attached to
+      it, and stops it behaving like a lesson &mdash; this is the answer to
+      &ldquo;I created that by mistake&rdquo;.
+      <strong>Delete permanently</strong> removes the session and every
+      attendance record, presence segment and expected-student row listed
+      above, because all three cascade from it. It cannot be undone.
+    </p>
+
+    <div class="field" id="session-delete-confirm-field" hidden>
+      <label for="session-delete-confirm">
+        Type <strong><span id="session-delete-id"></span></strong> to confirm
+        permanent deletion
+      </label>
+      <input type="text" id="session-delete-confirm" maxlength="200"
+             autocomplete="off" autocapitalize="none" spellcheck="false">
+    </div>
+
+    <div class="field" id="session-cancel-reason-field">
+      <label for="session-cancel-reason">Reason (optional)</label>
+      <input type="text" id="session-cancel-reason" maxlength="500"
+             autocomplete="off" placeholder="e.g. created for the wrong class">
+    </div>
+
+    <p class="form-error" id="session-remove-error" role="alert" hidden></p>
+
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-primary" id="session-cancel-action">Cancel session</button>
+      <button type="button" class="btn btn-danger" id="session-delete">Delete permanently</button>
+      <button type="button" class="btn btn-quiet" id="session-remove-close">Close</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- create or edit an account -->
+<dialog id="user-dialog" aria-labelledby="user-dialog-title">
+  <form method="dialog" class="dialog-body" id="user-form">
+    <h2 id="user-dialog-title">Add a teacher</h2>
+
+    <div class="field-row">
+      <div class="field">
+        <label for="user-username">Username</label>
+        <input type="text" id="user-username" maxlength="64" required
+               autocomplete="off" autocapitalize="none" spellcheck="false">
+      </div>
+      <div class="field grow">
+        <label for="user-display-name">Name</label>
+        <input type="text" id="user-display-name" maxlength="120" required
+               autocomplete="off">
+      </div>
+    </div>
+
+    <div class="field-row">
+      <div class="field">
+        <label for="user-role">Role</label>
+        <select id="user-role">
+          <option value="TEACHER">Teacher</option>
+          <option value="SUPER_ADMIN">Super Admin</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="user-status">Status</label>
+        <select id="user-status">
+          <option value="ACTIVE">Active</option>
+          <option value="INACTIVE">Inactive</option>
+        </select>
+      </div>
+      <div class="field grow">
+        <label for="user-password">Password</label>
+        <input type="password" id="user-password" maxlength="200"
+               autocomplete="new-password">
+      </div>
+    </div>
+    <p class="muted small" id="user-password-note">
+      At least 10 characters. Stored only as a PBKDF2 hash &mdash; it is never
+      shown again and cannot be recovered, only replaced.
+    </p>
+
+    <fieldset>
+      <legend>Assigned classes</legend>
+      <p class="muted small">
+        A teacher with assignments sees only those classes&rsquo; students,
+        sessions and attendance. A teacher with <em>no</em> assignment is
+        unrestricted within the teacher role.
+      </p>
+      <div class="field-row">
+        <div class="field grow">
+          <label for="user-class">Class</label>
+          <input type="text" id="user-class" maxlength="120"
+                 placeholder="e.g. CSE(AI)">
+        </div>
+        <div class="field">
+          <label for="user-section">Section</label>
+          <input type="text" id="user-section" maxlength="40"
+                 placeholder="e.g. C (blank = every section)">
+        </div>
+        <button type="button" class="btn" id="user-add-class">Add</button>
+      </div>
+      <div class="roster" id="user-assignments"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Photograph</legend>
+      <p class="muted small">
+        The picture on this person&rsquo;s staff record. It is
+        <strong>not</strong> face enrollment: no embedding is computed from
+        it, the recognition pipeline never opens it, and a teacher with a
+        photograph here is not recognisable to any camera.
+      </p>
+
+      <div class="capture-stage">
+        <video id="capture-video" hidden muted playsinline></video>
+        <img id="capture-preview" alt="The photograph just taken" hidden>
+        <p class="muted small" id="capture-idle">
+          No photograph yet.
+        </p>
+      </div>
+
+      <div class="row-actions" style="margin-top:.6rem">
+        <button type="button" class="btn" id="capture-start">Use camera</button>
+        <button type="button" class="btn btn-primary" id="capture-take" hidden>
+          Take photograph
+        </button>
+        <label class="btn" for="capture-file">Choose a file</label>
+        <input type="file" id="capture-file" accept="image/jpeg,image/png,image/webp"
+               class="sr-only">
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Documents</legend>
+      <p class="muted small">
+        Identity, qualifications, a contract. PDF or image, up to 10 MB. Only
+        a Super Admin can see or add these.
+      </p>
+
+      <div class="field-row">
+        <div class="field grow">
+          <label for="user-document-label">What is it?</label>
+          <input type="text" id="user-document-label" maxlength="120"
+                 placeholder="e.g. Teaching certificate">
+        </div>
+        <label class="btn" for="user-document-file">Add document</label>
+        <input type="file" id="user-document-file"
+               accept="application/pdf,image/jpeg,image/png,image/webp"
+               class="sr-only">
+      </div>
+
+      <div id="user-documents"></div>
+    </fieldset>
+
+    <p class="form-error" id="user-error" role="alert" hidden></p>
+
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-primary" id="user-save">Create account</button>
+      <button type="button" class="btn btn-quiet" id="user-delete" hidden>Delete account</button>
+      <button type="button" class="btn btn-quiet" id="user-close">Close</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- change your own password -->
+<dialog id="password-dialog" aria-labelledby="password-dialog-title">
+  <form method="dialog" class="dialog-body" id="password-form">
+    <h2 id="password-dialog-title">Change your password</h2>
+    <p class="muted small">
+      Changing it signs out every other session on this account.
+    </p>
+
+    <div class="field">
+      <label for="password-current">Current password</label>
+      <input type="password" id="password-current" maxlength="200" required
+             autocomplete="current-password">
+    </div>
+    <div class="field">
+      <label for="password-new">New password</label>
+      <input type="password" id="password-new" maxlength="200" required
+             autocomplete="new-password">
+    </div>
+
+    <p class="form-error" id="password-error" role="alert" hidden></p>
+
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-primary" id="password-save">Change password</button>
+      <button type="button" class="btn btn-quiet" id="password-close">Close</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ending a lesson before its scheduled end -->
+<dialog id="early-end-dialog" aria-labelledby="early-end-title">
+  <form method="dialog" class="dialog-body">
+    <h2 id="early-end-title">End session early?</h2>
+
+    <dl class="meta" id="early-end-meta"></dl>
+
+    <p class="muted small">
+      This session is being ended before its scheduled end time.
+      <strong>Students already marked present will remain present.</strong>
+      Students not yet marked present will be finalised according to the
+      attendance rules.
+    </p>
+    <p class="muted small">
+      Attendance is measured over the time the camera was actually running,
+      not the full scheduled window &mdash; so ending early does not count
+      against a student who was here throughout.
+    </p>
+
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-primary" id="early-end-confirm">End Session</button>
+      <button type="button" class="btn btn-quiet" id="early-end-cancel">Cancel</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- schedule a session -->
+<dialog id="session-dialog" aria-labelledby="session-dialog-title">
+  <form method="dialog" class="dialog-body" id="session-form">
+    <h2 id="session-dialog-title">Schedule a session</h2>
+    <p class="muted small">
+      Scheduling records who is expected and when. It calculates no
+      attendance: that happens once, after the session has been run from the
+      Live classroom tab and stopped.
+    </p>
+
+    <!-- WHO IS EXPECTED, chosen by class rather than by ticking forty boxes.
+
+         Class and section are the registered ones from the student register,
+         and the expected students are resolved from them ON THE SERVER - see
+         DataService.expected_from_class. The count below is a preview of what
+         the server will do, not a second calculation of it.
+
+         The class IDENTIFIER is separate and stays free text: existing
+         sessions carry ids like "CSE(AI)-C" that were typed before there was a
+         register to pick from, and a canonical class table would mean
+         rewriting them. It is filled in from the class and section when they
+         are chosen, and can still be edited. -->
+    <fieldset>
+      <legend>Class</legend>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="new-session-class-name">Registered class</label>
+          <input type="text" id="new-session-class-name"
+                 list="registered-classes" maxlength="120" autocomplete="off"
+                 placeholder="e.g. MECH">
+          <datalist id="registered-classes"></datalist>
+        </div>
+        <div class="field">
+          <label for="new-session-section">Section</label>
+          <input type="text" id="new-session-section" maxlength="40"
+                 autocomplete="off" placeholder="all sections">
+        </div>
+      </div>
+
+      <p class="roster-summary" id="new-session-expected" role="status"></p>
+
+      <div class="field">
+        <label for="new-session-class">Session class identifier</label>
+        <input type="text" id="new-session-class" list="known-classes"
+               maxlength="120" autocomplete="off" required
+               placeholder="e.g. CLASS-10A">
+        <datalist id="known-classes"></datalist>
+        <p class="muted small">
+          What this lesson is recorded against. Filled in from the class and
+          section above; edit it if this school already uses another spelling.
+        </p>
+      </div>
+    </fieldset>
+
+    <div class="field-row">
+      <div class="field">
+        <label for="new-session-date">Date</label>
+        <input type="date" id="new-session-date" required>
+      </div>
+      <div class="field">
+        <label for="new-session-start">Start time</label>
+        <input type="time" id="new-session-start" required>
+      </div>
+      <div class="field">
+        <label for="new-session-end">End time</label>
+        <input type="time" id="new-session-end" required>
+      </div>
+    </div>
+    <p class="muted small">
+      Times are entered in this computer&rsquo;s local time and stored in UTC.
+    </p>
+
+    <fieldset>
+      <legend>Expected students</legend>
+      <p class="muted small">
+        Absence is only meaningful against a list of who was expected, so at
+        least one student is required. Only registered students can be chosen
+        &mdash; identifiers are never typed by hand.
+        Choosing a class above ticks its <strong>active</strong> students; a
+        student who has left is not expected at a lesson and is not listed.
+        You can still adjust the list by hand.
+      </p>
+      <div class="roster-controls">
+        <button type="button" class="btn btn-quiet" id="roster-all">Select all</button>
+        <button type="button" class="btn btn-quiet" id="roster-none">Clear</button>
+        <span class="muted small" id="roster-count"></span>
+      </div>
+      <div class="roster" id="new-session-students"></div>
+    </fieldset>
+
+    <p class="form-error" id="new-session-error" role="alert" hidden></p>
+
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-primary" id="session-create">Create session</button>
+      <button type="submit" class="btn btn-quiet" value="close">Cancel</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- evidence / override dialog -->
+<!-- Register a classroom camera device.
+
+     Records WHAT and WHERE a device is. It records no health at all: see the
+     note in the dialog, and save_camera in backend/routes/operations.py, which
+     deliberately leaves an existing device's health alone when its details are
+     corrected - fixing a typo in a room name must not report a working camera
+     as offline. -->
+<!-- The camera indexes this machine actually answered on. Filled by the
+     Detect buttons from /api/cameras/available, which probes them. Empty until
+     somebody asks, because probing opens every device in turn. -->
+<datalist id="available-cameras"></datalist>
+
+<dialog id="term-dialog" aria-labelledby="term-dialog-title">
+  <form method="dialog" class="dialog-body" id="term-form">
+    <h2 id="term-dialog-title">Add an academic term</h2>
+    <p class="muted small">
+      A new term lands <strong>PLANNED</strong>. It moves nobody and promotes
+      nobody &mdash; creating 2027-28 while 2026-27 is running is normal, and
+      the new term only becomes current when somebody activates it.
+    </p>
+
+    <div class="field">
+      <label for="term-year">Academic year</label>
+      <input type="text" id="term-year" maxlength="40" required
+             autocapitalize="none" spellcheck="false"
+             placeholder="e.g. 2026-27">
+    </div>
+
+    <div class="field">
+      <label for="term-semester">Semester</label>
+      <input type="text" id="term-semester" maxlength="40"
+             placeholder="e.g. 1 (optional)">
+      <p class="muted small">
+        A year with no semester is a whole-year term. A year and a semester
+        together must be unique.
+      </p>
+    </div>
+
+    <div class="field-row">
+      <div class="field">
+        <label for="term-start">Starts</label>
+        <input type="date" id="term-start">
+      </div>
+      <div class="field">
+        <label for="term-end">Ends</label>
+        <input type="date" id="term-end">
+      </div>
+    </div>
+
+    <p class="form-error" id="term-error" role="alert" hidden></p>
+
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-primary" id="term-save">Create</button>
+      <button type="submit" class="btn btn-quiet" id="term-cancel"
+              value="close">Cancel</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="camera-dialog" aria-labelledby="camera-dialog-title">
+  <form method="dialog" class="dialog-body" id="camera-form">
+    <h2 id="camera-dialog-title">Register a camera</h2>
+    <p class="muted small">
+      Registering a device records what it is and where it is. It reports
+      <strong>no health</strong> &mdash; status, frame rate and latency stay
+      <strong>No data</strong> until the device itself sends a heartbeat.
+    </p>
+
+    <div class="field">
+      <label for="camera-id">Device ID</label>
+      <input type="text" id="camera-id" maxlength="120" required
+             autocapitalize="none" spellcheck="false"
+             placeholder="e.g. CAM-10A">
+      <p class="muted small">
+        How the device identifies itself when it sends a heartbeat. Registering
+        an existing ID again corrects its details and leaves its health alone.
+      </p>
+    </div>
+
+    <div class="field">
+      <label for="camera-label">Device name</label>
+      <input type="text" id="camera-label" maxlength="200"
+             placeholder="e.g. Front-of-room camera">
+    </div>
+
+    <div class="field-row">
+      <div class="field">
+        <label for="camera-classroom">Classroom / location</label>
+        <input type="text" id="camera-classroom" maxlength="200"
+               placeholder="e.g. Block C, Room 10A">
+      </div>
+      <div class="field">
+        <label for="camera-index">Camera index</label>
+        <input type="number" id="camera-index" min="0" max="64" step="1"
+               inputmode="numeric" placeholder="0">
+        <p class="muted small">
+          Which capture device this is on the machine running the pipeline.
+          A teacher then picks the room instead of the number.
+        </p>
+      </div>
+    </div>
+
+    <p class="form-error" id="camera-error" role="alert" hidden></p>
+
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-primary" id="camera-save">Register</button>
+      <button type="submit" class="btn btn-quiet" value="close">Cancel</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="record-dialog" aria-labelledby="record-dialog-title">
+  <form method="dialog" class="dialog-body">
+    <h2 id="record-dialog-title">Attendance record</h2>
+    <div id="record-evidence"></div>
+
+    <fieldset id="override-fieldset">
+      <legend>Manual correction</legend>
+      <p class="muted small">
+        The computed status and evidence are preserved. A correction is
+        recorded with its reason and time. There is no authentication, so the
+        name below is an unverified claim.
+      </p>
+      <div class="field">
+        <label for="override-status">New status</label>
+        <select id="override-status">
+          <option>PRESENT</option><option>LATE</option>
+          <option>PARTIAL</option><option>LEFT_EARLY</option>
+          <option>ABSENT</option><option>MANUAL_OVERRIDE</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="override-reason">Reason (required)</label>
+        <input type="text" id="override-reason" minlength="3" maxlength="500"
+               placeholder="e.g. Student was in an approved alternate classroom">
+      </div>
+      <div class="field">
+        <label for="override-actor">Your name (optional)</label>
+        <input type="text" id="override-actor" maxlength="120">
+      </div>
+      <p class="form-error" id="override-error" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-primary" id="override-apply">Apply correction</button>
+        <button type="button" class="btn btn-quiet" id="override-clear" hidden>Undo correction</button>
+        <button type="submit" class="btn btn-quiet" value="close">Close</button>
+      </div>
+    </fieldset>
+  </form>
+</dialog>
+
+<!-- The 3D engine, then Assembly Mode, then the application.
+
+     Classic scripts, so they run in this order, which is the order the
+     dependencies point in: app.js calls window.Spatial and
+     window.Assembly, and every one of those calls is guarded. Delete
+     either of the first two tags and the console loses its depth or
+     its assembly view and keeps everything else. -->
+<script src="/static/spatial.js"></script>
+<script src="/static/assembly.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

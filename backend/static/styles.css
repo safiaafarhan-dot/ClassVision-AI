@@ -1,0 +1,3504 @@
+/*
+  ClassVision AI - interface
+
+  AN OPERATIONS CONSOLE, NOT A SCHOOL PORTAL
+
+    This product reads cameras, runs inference and decides attendance. The
+    interface is drawn to look like what it is: an operations console for a
+    computer-vision system. Deep ground, layered surfaces, thin borders,
+    monospace for anything a machine measured, and a cyan signal colour used
+    sparingly enough that it still means something when it appears.
+
+    There is no decoration here that suggests a classroom. Nothing is
+    illustrated, nothing is friendly for its own sake, and the only images in
+    the entire interface are the camera's own frames.
+
+  Hand-written, no framework, no build step, and NO REQUEST THAT LEAVES THE
+  MACHINE. Every gradient, border, glow and texture below is CSS the browser
+  already has. This file loads NO FILE of any kind - no web font, no icon
+  sprite, no background image - because a classroom appliance is frequently a
+  machine with no internet connection, and a font that fails to load is a
+  layout that moves under somebody reading it. A test asserts the absence.
+
+  THE FOUR RULES THE VISUAL DESIGN DOES NOT GET TO BREAK
+
+    1. Colour is always a SECONDARY signal. Every status carries a symbol and
+       its word as well as a hue, so a table survives greyscale printing and a
+       reader who does not separate the colours. Depth sits UNDER that
+       contract, never over it.
+
+    2. Motion communicates state or it does not exist. A live pulse means a
+       camera is running. A panel that slides in because sliding looks
+       expensive is a panel that is briefly unreadable. Everything that moves
+       is switched OFF - not shortened - by prefers-reduced-motion.
+
+    3. Depth must not cost legibility. Blur and translucency are applied to
+       CHROME and never behind a number somebody has to read. Text always sits
+       on a surface opaque enough to hold its contrast.
+
+    4. Hierarchy over uniformity. Panels are deliberately NOT all the same: a
+       primary panel, a supporting panel, a compact metric, a status module and
+       a data panel each look different, because a page where everything is a
+       rounded card with a shadow is a page with no hierarchy at all.
+
+  ORDERING MATTERS IN THIS FILE
+
+    Status colours are defined BEFORE the depth layer, and the depth layer
+    begins at `.theme-switch`. tests/test_theme_toggle.py slices the file at
+    that rule and asserts that nothing after it references a status token or
+    puts a blur behind anything but chrome. Keep decoration below that line and
+    meaning above it.
+
+  THEMING
+
+    Dark is the default and the palette the design is drawn for. Light is a
+    genuine second palette rather than an inversion: the status hues have to
+    darken to stay legible on white, and the glow has to become a shadow.
+
+    Three states: no attribute follows the machine (the only state that works
+    with JavaScript off), and data-theme=light / dark is an explicit choice
+    that WINS over the machine setting.
+
+    The light palette therefore appears TWICE, once under the media query and
+    once under the attribute, because CSS cannot attach one declaration block
+    to both. That duplication is guarded: test_theme_toggle.py parses both
+    copies and fails if they ever declare a different token or a different
+    value.
+*/
+
+/* ---------- the dark palette (default) ---------- */
+
+:root {
+  color-scheme: dark;
+
+  /* Ground. Deeper and cooler than neutral black, so the accents can be
+     luminous without blooming into the surfaces around them. */
+  --bg: #05070d;
+  --bg-deep: #020408;
+  /* The engineering grid. One hairline colour, drawn with gradients. */
+  --bg-grid: rgba(125, 211, 252, .045);
+
+  /* Four surface levels, three of them TRANSLUCENT.
+
+     They were opaque hexes, which quietly made the backdrop-filter on every
+     panel a composite layer that rendered nothing. The alpha versions below
+     land on the same perceived colour over this ground - #101722 at 72% over
+     #05070d is about #0c1119 - so no contrast anywhere in the interface
+     moved; what changed is that the illumination behind them now shows
+     through, which is what the blur was always for.
+
+     Rule 3 is unchanged and is why the fourth one exists. --surface-solid is
+     opaque and is what a sticky table header, a dialog and a tooltip use: a
+     header that table rows scroll THROUGH is not a header. */
+  --surface: rgba(16, 23, 34, .72);
+  --surface-2: rgba(24, 34, 49, .74);
+  --surface-3: rgba(34, 47, 66, .78);
+  --surface-solid: #0a0f16;
+
+  --border: rgba(148, 180, 222, .16);
+  --border-faint: rgba(148, 180, 222, .085);
+  --border-strong: rgba(148, 180, 222, .32);
+
+  --text: #eef4ff;
+  --text-muted: #9aabc7;
+  /* Lightened from #6b7d94 when the surfaces became translucent.
+
+     --text-dim is the ink of every uppercase micro-label in the interface -
+     a metric caption, a panel eyebrow, a telemetry key - all of which are
+     set at .68rem, which WCAG counts as small text and wants 4.5:1 for. On
+     the deepest surface the old value measured 3.61:1, and it had been close
+     to the line before the glass too. This passes on all three surfaces in
+     both themes, and a test now computes it rather than trusting it. */
+  --text-dim: #7c8ea5;
+
+  /* Cyan is the primary signal; violet is secondary and deliberately rare.
+     Brighter than before because the ground went darker - the contrast ratio
+     is what changed, not the restraint. */
+  --accent: #2ee6ff;
+  --accent-2: #9d8cff;
+  --accent-soft: rgba(46, 230, 255, .15);
+  --accent-2-soft: rgba(157, 140, 255, .16);
+  --accent-ink: #021318;
+  --focus: #7df0ff;
+
+  /* Status. Operational green, warning amber, critical red, and two further
+     hues for the states that are neither. Each pairs a readable foreground
+     with a translucent ground so a pill glows rather than becoming a block. */
+  --present: #3ddc97;      --present-bg: rgba(61, 220, 151, .15);
+  --late: #ffc44d;         --late-bg: rgba(255, 196, 77, .15);
+  --partial: #b49cff;      --partial-bg: rgba(180, 156, 255, .16);
+  --early: #4cc9f0;        --early-bg: rgba(76, 201, 240, .15);
+  --absent: #ff7a90;       --absent-bg: rgba(255, 122, 144, .16);
+  --unknown: #9fb0c6;      --unknown-bg: rgba(159, 176, 198, .13);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .55);
+  --shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 12px 34px rgba(1, 4, 10, .5);
+  --shadow-lift: 0 2px 8px rgba(0, 0, 0, .55), 0 28px 64px rgba(1, 4, 10, .6);
+  --glow: 0 0 0 1px rgba(46, 230, 255, .38), 0 12px 42px rgba(46, 230, 255, .2);
+  --glow-soft: 0 0 22px rgba(46, 230, 255, .26);
+
+  /* New in this pass, and defined in all three palettes.
+
+     --ring is the focus/active halo the 3D surfaces use; --sheen is the
+     highlight along a raised edge; --scan is the colour of the scanline over a
+     live camera frame. All three are decoration and none of them carries a
+     status - the depth layer may use them, which is the whole reason they are
+     tokens rather than literals. */
+  --ring: rgba(46, 230, 255, .55);
+  --sheen: rgba(255, 255, 255, .07);
+  --scan: rgba(46, 230, 255, .1);
+
+  /* THE GLASS.
+
+     A pane of glass is not a faded box, and the difference is entirely in
+     its edges: light catches the top lip, the body is slightly tinted, and
+     the bottom sits in its own shadow. These three tokens are those edges.
+
+     --glass-hi   the highlight along a raised top edge
+     --glass-tint the wash across the pane, so it reads as a material
+     --glass-line the hairline that separates one pane from the next
+
+     All three are decoration and none carries a status, which is what lets
+     the depth layer use them. */
+  --glass-hi: rgba(255, 255, 255, .1);
+  --glass-tint: rgba(125, 211, 252, .045);
+  --glass-line: rgba(148, 180, 222, .22);
+
+  /* THE SPATIAL LAYER.
+  
+     The console is drawn as a room rather than as a page, and these are the
+     materials that room is made of. None of them carries a status: a pane of
+     glass, a light trail and a patch of fog mean nothing about attendance,
+     which is the whole reason they can be used by decoration.
+  
+     THREE GLASS DEPTHS, not one. A spatial interface that makes everything
+     equally transparent reads as a smear, because depth is carried by the
+     DIFFERENCE between planes. --glass-far is the furthest pane and the
+     thinnest; --glass-near is the one under the pointer. Text never sits on
+     far glass - it sits on --surface, which the contrast test measures.
+  
+     --holo-* is the holographic marker that floats above a detected person.
+     It is a container for a name and a word, so it needs its own readable
+     ink rather than borrowing the body text's.
+  
+     --core-* is the AI core at the centre of the room, --fog is the depth
+     haze that makes the far wall far, --trail and --spark are the moving
+     light, and --orb-*/--stage-* are the student avatar and the floor it
+     stands on. */
+  --glass-far: rgba(18, 27, 40, .42);
+  --glass-mid: rgba(22, 32, 47, .58);
+  --glass-near: rgba(28, 40, 58, .7);
+  --glass-edge: rgba(190, 232, 255, .34);
+  --glass-rim: rgba(46, 230, 255, .18);
+  --holo: #7df0ff;
+  --holo-ink: #02131a;
+  --holo-bg: rgba(9, 28, 40, .74);
+  --holo-line: rgba(125, 240, 255, .4);
+  --core: #2ee6ff;
+  --core-2: #9d8cff;
+  --core-haze: rgba(46, 230, 255, .14);
+  --fog: rgba(5, 7, 13, .82);
+  --trail: rgba(125, 211, 252, .3);
+  --spark: rgba(190, 240, 255, .55);
+  --orb: rgba(120, 190, 230, .2);
+  --orb-rim: rgba(190, 232, 255, .45);
+  --stage: rgba(46, 230, 255, .1);
+  --stage-line: rgba(125, 211, 252, .14);
+
+  /* THE GATE PALETTE.
+
+     The sign-in screen is not the console and is not drawn to look like it.
+     These nine tokens are the only palette the gate uses, and signing in
+     swaps them out for the cyan instrumentation above - which is why the
+     whole interface visibly CHANGES COLOUR the moment a password is
+     accepted. The swap is one rule on body.locked, down with the dialogs,
+     and no JavaScript at all: remove the class and the page repaints.
+
+     Violet into magenta, because the gate has to be the furthest thing from
+     the operational cyan a teacher looks at for the rest of the day. The two
+     palettes never appear together, so they are free to disagree. */
+  --gate: #b57cff;
+  --gate-2: #ff63c6;
+  --gate-soft: rgba(181, 124, 255, .2);
+  --gate-2-soft: rgba(255, 99, 198, .16);
+  --gate-ink: #15031f;
+  --gate-bg: #0a0514;
+  --gate-bg-2: #050209;
+  --gate-ring: rgba(181, 124, 255, .55);
+  --gate-line: rgba(205, 170, 255, .26);
+
+  /* Not colours, and legitimately shared between the themes: a radius and an
+     easing curve do not change when the lights go on. */
+  --radius: 14px;
+  --radius-sm: 9px;
+  --blur: 16px;
+  --ease: cubic-bezier(.22, .61, .36, 1);
+  --fast: 130ms;
+  --slow: 380ms;
+}
+
+/*
+  Dark, stated again under the media query.
+
+  It changes nothing on a dark machine - the tokens are already on bare :root.
+  It exists so that a browser set to dark can never inherit a light override,
+  and because the rule is easier to find here than to infer from an absence.
+*/
+@media (prefers-color-scheme: dark) {
+  :root { color-scheme: dark; }
+}
+
+/* Dark, chosen explicitly. The tokens are above; this states the scheme and
+   exists so a machine set to LIGHT whose user asked for dark does not pick up
+   the light palette from the media query below - that is what the :not() on
+   the light blocks is for. */
+:root[data-theme="dark"] { color-scheme: dark; }
+
+/*
+  Light, for a bright room.
+
+  Its own palette rather than an inversion. Two things genuinely have to
+  change: the status hues darken, because #34d399 on white is unreadable at
+  12px; and the glow becomes a shadow, because light does not read as depth on
+  a white ground.
+*/
+@media (prefers-color-scheme: light) {
+  /* System light, unless the user explicitly asked for dark. */
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+
+    /* A cool off-white rather than pure white: it gives the white surfaces
+       something to sit ON, which is what was missing - every panel used to
+       float on the same colour it was made of. */
+    --bg: #eef2f8;
+    --bg-deep: #dfe6f0;
+    --bg-grid: rgba(15, 38, 68, .06);
+
+    /* The same translucency, over a light ground. Alpha is higher here:
+    white at 72% over #eef2f8 loses more of itself than #101722 at 72%
+    loses over near-black, and a panel has to stay a panel. */
+    --surface: rgba(255, 255, 255, .78);
+    --surface-2: rgba(246, 249, 253, .82);
+    --surface-3: rgba(226, 234, 245, .86);
+    --surface-solid: #ffffff;
+
+    /* Dark enough to actually see on a bright screen. The old border was
+       invisible next to a window, which is where this interface gets used. */
+    --border: rgba(15, 38, 68, .2);
+    --border-faint: rgba(15, 38, 68, .11);
+    --border-strong: rgba(15, 38, 68, .4);
+
+    --text: #0a1626;
+    --text-muted: #44546e;
+    /* Darkened from #64748b, for the reason the dark palette's note gives.
+       On the deepest light surface the old value measured 3.97:1. */
+    --text-dim: #5b6b82;
+
+    /* Saturated, because here they are INK on light rather than light on
+       dark. The old ones were desaturated to survive and lost the signal. */
+    --accent: #0b6e8a;
+    --accent-2: #5340d6;
+    --accent-soft: rgba(11, 110, 138, .12);
+    --accent-2-soft: rgba(83, 64, 214, .12);
+    --accent-ink: #ffffff;
+    --focus: #0b6e8a;
+
+    --present: #036b4d;      --present-bg: rgba(3, 107, 77, .12);
+    --late: #8a5600;         --late-bg: rgba(138, 86, 0, .13);
+    --partial: #52189f;      --partial-bg: rgba(82, 24, 159, .11);
+    --early: #065a7e;        --early-bg: rgba(6, 90, 126, .12);
+    --absent: #a81d13;       --absent-bg: rgba(168, 29, 19, .11);
+    --unknown: #3f4c5f;      --unknown-bg: rgba(63, 76, 95, .1);
+
+    --shadow-sm: 0 1px 2px rgba(15, 38, 68, .1);
+    --shadow: 0 1px 3px rgba(15, 38, 68, .09), 0 12px 28px rgba(15, 38, 68, .1);
+    --shadow-lift: 0 3px 8px rgba(15, 38, 68, .13), 0 26px 54px rgba(15, 38, 68, .15);
+    --glow: 0 0 0 1px rgba(11, 110, 138, .36), 0 10px 30px rgba(11, 110, 138, .18);
+    --glow-soft: 0 0 16px rgba(11, 110, 138, .22);
+
+    --ring: rgba(11, 110, 138, .5);
+    --sheen: rgba(15, 38, 68, .05);
+    --scan: rgba(11, 110, 138, .08);
+
+    /* Glass in a bright room. The highlight is still white - light comes
+    from above in both themes - but the tint cools rather than brightens,
+    because a warm wash on white reads as a stain. */
+    --glass-hi: rgba(255, 255, 255, .72);
+    --glass-tint: rgba(15, 38, 68, .028);
+    --glass-line: rgba(15, 38, 68, .16);
+
+    /* THE SPATIAL LAYER.
+    
+       The console is drawn as a room rather than as a page, and these are the
+       materials that room is made of. None of them carries a status: a pane of
+       glass, a light trail and a patch of fog mean nothing about attendance,
+       which is the whole reason they can be used by decoration.
+    
+       THREE GLASS DEPTHS, not one. A spatial interface that makes everything
+       equally transparent reads as a smear, because depth is carried by the
+       DIFFERENCE between planes. --glass-far is the furthest pane and the
+       thinnest; --glass-near is the one under the pointer. Text never sits on
+       far glass - it sits on --surface, which the contrast test measures.
+    
+       --holo-* is the holographic marker that floats above a detected person.
+       It is a container for a name and a word, so it needs its own readable
+       ink rather than borrowing the body text's.
+    
+       --core-* is the AI core at the centre of the room, --fog is the depth
+       haze that makes the far wall far, --trail and --spark are the moving
+       light, and --orb-*/--stage-* are the student avatar and the floor it
+       stands on. */
+    --glass-far: rgba(255, 255, 255, .5);
+    --glass-mid: rgba(255, 255, 255, .66);
+    --glass-near: rgba(255, 255, 255, .8);
+    --glass-edge: rgba(255, 255, 255, .95);
+    --glass-rim: rgba(11, 110, 138, .16);
+    --holo: #07546b;
+    --holo-ink: #ffffff;
+    --holo-bg: rgba(255, 255, 255, .88);
+    --holo-line: rgba(11, 110, 138, .34);
+    --core: #0b6e8a;
+    --core-2: #5340d6;
+    --core-haze: rgba(11, 110, 138, .12);
+    --fog: rgba(238, 242, 248, .84);
+    --trail: rgba(15, 38, 68, .16);
+    --spark: rgba(11, 110, 138, .4);
+    --orb: rgba(15, 38, 68, .07);
+    --orb-rim: rgba(11, 110, 138, .3);
+    --stage: rgba(11, 110, 138, .07);
+    --stage-line: rgba(15, 38, 68, .1);
+
+    /* The gate, in a bright room. The same two hues, darkened until they are
+       INK on violet-white rather than light on black - #b57cff set as a
+       headline on #f1ecfa is a decorative blur, not a title. */
+    --gate: #6d28a8;
+    --gate-2: #a4126b;
+    --gate-soft: rgba(109, 40, 168, .12);
+    --gate-2-soft: rgba(164, 18, 107, .1);
+    --gate-ink: #ffffff;
+    --gate-bg: #f1ecfa;
+    --gate-bg-2: #e2d8f4;
+    --gate-ring: rgba(109, 40, 168, .45);
+    --gate-line: rgba(109, 40, 168, .22);
+  }
+}
+
+/* Light, chosen explicitly. The same values as the block above, and a test
+   compares the two property by property. */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  /* A cool off-white rather than pure white: it gives the white surfaces
+     something to sit ON, which is what was missing - every panel used to
+     float on the same colour it was made of. */
+  --bg: #eef2f8;
+  --bg-deep: #dfe6f0;
+  --bg-grid: rgba(15, 38, 68, .06);
+
+  /* The same translucency, over a light ground. Alpha is higher here:
+  white at 72% over #eef2f8 loses more of itself than #101722 at 72%
+  loses over near-black, and a panel has to stay a panel. */
+  --surface: rgba(255, 255, 255, .78);
+  --surface-2: rgba(246, 249, 253, .82);
+  --surface-3: rgba(226, 234, 245, .86);
+  --surface-solid: #ffffff;
+
+  /* Dark enough to actually see on a bright screen. The old border was
+     invisible next to a window, which is where this interface gets used. */
+  --border: rgba(15, 38, 68, .2);
+  --border-faint: rgba(15, 38, 68, .11);
+  --border-strong: rgba(15, 38, 68, .4);
+
+  --text: #0a1626;
+  --text-muted: #44546e;
+  /* Darkened from #64748b, for the reason the dark palette's note gives.
+     On the deepest light surface the old value measured 3.97:1. */
+  --text-dim: #5b6b82;
+
+  /* Saturated, because here they are INK on light rather than light on
+     dark. The old ones were desaturated to survive and lost the signal. */
+  --accent: #0b6e8a;
+  --accent-2: #5340d6;
+  --accent-soft: rgba(11, 110, 138, .12);
+  --accent-2-soft: rgba(83, 64, 214, .12);
+  --accent-ink: #ffffff;
+  --focus: #0b6e8a;
+
+  --present: #036b4d;      --present-bg: rgba(3, 107, 77, .12);
+  --late: #8a5600;         --late-bg: rgba(138, 86, 0, .13);
+  --partial: #52189f;      --partial-bg: rgba(82, 24, 159, .11);
+  --early: #065a7e;        --early-bg: rgba(6, 90, 126, .12);
+  --absent: #a81d13;       --absent-bg: rgba(168, 29, 19, .11);
+  --unknown: #3f4c5f;      --unknown-bg: rgba(63, 76, 95, .1);
+
+  --shadow-sm: 0 1px 2px rgba(15, 38, 68, .1);
+  --shadow: 0 1px 3px rgba(15, 38, 68, .09), 0 12px 28px rgba(15, 38, 68, .1);
+  --shadow-lift: 0 3px 8px rgba(15, 38, 68, .13), 0 26px 54px rgba(15, 38, 68, .15);
+  --glow: 0 0 0 1px rgba(11, 110, 138, .36), 0 10px 30px rgba(11, 110, 138, .18);
+  --glow-soft: 0 0 16px rgba(11, 110, 138, .22);
+
+  --ring: rgba(11, 110, 138, .5);
+  --sheen: rgba(15, 38, 68, .05);
+  --scan: rgba(11, 110, 138, .08);
+
+  /* Glass in a bright room. The highlight is still white - light comes
+  from above in both themes - but the tint cools rather than brightens,
+  because a warm wash on white reads as a stain. */
+  --glass-hi: rgba(255, 255, 255, .72);
+  --glass-tint: rgba(15, 38, 68, .028);
+  --glass-line: rgba(15, 38, 68, .16);
+
+  /* THE SPATIAL LAYER.
+  
+     The console is drawn as a room rather than as a page, and these are the
+     materials that room is made of. None of them carries a status: a pane of
+     glass, a light trail and a patch of fog mean nothing about attendance,
+     which is the whole reason they can be used by decoration.
+  
+     THREE GLASS DEPTHS, not one. A spatial interface that makes everything
+     equally transparent reads as a smear, because depth is carried by the
+     DIFFERENCE between planes. --glass-far is the furthest pane and the
+     thinnest; --glass-near is the one under the pointer. Text never sits on
+     far glass - it sits on --surface, which the contrast test measures.
+  
+     --holo-* is the holographic marker that floats above a detected person.
+     It is a container for a name and a word, so it needs its own readable
+     ink rather than borrowing the body text's.
+  
+     --core-* is the AI core at the centre of the room, --fog is the depth
+     haze that makes the far wall far, --trail and --spark are the moving
+     light, and --orb-*/--stage-* are the student avatar and the floor it
+     stands on. */
+  --glass-far: rgba(255, 255, 255, .5);
+  --glass-mid: rgba(255, 255, 255, .66);
+  --glass-near: rgba(255, 255, 255, .8);
+  --glass-edge: rgba(255, 255, 255, .95);
+  --glass-rim: rgba(11, 110, 138, .16);
+  --holo: #07546b;
+  --holo-ink: #ffffff;
+  --holo-bg: rgba(255, 255, 255, .88);
+  --holo-line: rgba(11, 110, 138, .34);
+  --core: #0b6e8a;
+  --core-2: #5340d6;
+  --core-haze: rgba(11, 110, 138, .12);
+  --fog: rgba(238, 242, 248, .84);
+  --trail: rgba(15, 38, 68, .16);
+  --spark: rgba(11, 110, 138, .4);
+  --orb: rgba(15, 38, 68, .07);
+  --orb-rim: rgba(11, 110, 138, .3);
+  --stage: rgba(11, 110, 138, .07);
+  --stage-line: rgba(15, 38, 68, .1);
+
+  /* The gate, in a bright room. The same two hues, darkened until they are
+     INK on violet-white rather than light on black - #b57cff set as a
+     headline on #f1ecfa is a decorative blur, not a title. */
+  --gate: #6d28a8;
+  --gate-2: #a4126b;
+  --gate-soft: rgba(109, 40, 168, .12);
+  --gate-2-soft: rgba(164, 18, 107, .1);
+  --gate-ink: #ffffff;
+  --gate-bg: #f1ecfa;
+  --gate-bg-2: #e2d8f4;
+  --gate-ring: rgba(109, 40, 168, .45);
+  --gate-line: rgba(109, 40, 168, .22);
+}
+
+/*
+  STRUCTURE TOKENS, in their own rule and on purpose.
+
+  These are not theme colours - a font stack and a sidebar width are the same
+  in both themes - so they are kept out of the palette above, where every
+  addition has to be restated in both light copies for no reason. The split is
+  guarded the other way round too: test_theme_toggle.py asserts this rule holds
+  no colour at all, so it cannot become a side door for a token that should
+  have been themed.
+
+  ::backdrop is included because a dialog's backdrop sits outside the document
+  tree and inherits nothing from :root.
+*/
+:root, ::backdrop {
+  /* System stacks. No web font, so nothing to download and nothing to shift. */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+               "Helvetica Neue", Arial, sans-serif;
+  /* Monospace carries every value a machine measured - ids, frame rates,
+     model versions, percentages in a table - so columns of figures line up
+     and a reader can tell a measurement from a sentence at a glance. */
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono",
+               Consolas, "Liberation Mono", monospace;
+
+  /* Two widths. The rail remembers which one it is on, in localStorage,
+     and the collapsed one is wide enough for a 20px icon with a real target
+     around it rather than as narrow as it could possibly be. */
+  --sidebar-w: 276px;
+  --sidebar-w-collapsed: 76px;
+  --topbar-h: 58px;
+  --radius-lg: 18px;
+  --radius-pill: 999px;
+}
+
+/* ---------- reset and base ---------- */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+/*
+  THE `hidden` ATTRIBUTE ACTUALLY HIDES THINGS.
+
+  This one rule fixes a defect that ran through the whole interface, and it is
+  worth writing down why, because the cause is genuinely surprising.
+
+  `hidden` is not a browser primitive. It is a line in the user agent's own
+  stylesheet - roughly `[hidden] { display: none; }` - and a UA rule loses to
+  ANY author rule that sets display, whatever the specificity, because origin
+  beats specificity in the cascade. So the moment an element is given a
+  display of its own:
+
+      .auth-screen { display: grid; }
+
+  ...setting `hidden` on it in JavaScript does nothing at all. The attribute
+  appears in the DOM, every test that looks for it passes, and the element
+  stays on screen.
+
+  Twenty-one elements in this interface were in exactly that state: the
+  sign-in gate stayed laid out behind the console after signing in, the
+  session and student detail panels never closed, the live grid and the
+  finalised-session summary were always present, the enrolment camera and its
+  progress panel never went away, and several confirm-before-delete fields
+  were permanently visible. Every one of those is a deliberate `hidden`
+  toggle in app.js that had never once taken effect.
+
+  `!important` is not decoration here, it is the requirement: without it this
+  rule still loses to `#some-id { display: grid }`, which is a higher
+  specificity than an attribute selector. With it, `hidden` means hidden
+  everywhere, which is what every line of code that sets it already assumed.
+
+  The exception the HTML specification carves out - `hidden="until-found"`,
+  which must stay findable by in-page search - is honoured by the :not().
+*/
+[hidden]:not([hidden="until-found"]) { display: none !important; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg);
+  min-height: 100vh;
+}
+
+/*
+  The ground illumination: a very light wash from the top left, where the brand
+  sits, and a cooler one from the right.
+
+  On its OWN fixed layer rather than painted onto body, for three reasons: it
+  composites once instead of on every scroll, it can be removed without
+  touching the page's background colour, and printing has to be able to drop it
+  - a translucent panel over a gradient prints as a grey wash behind the
+  numbers somebody is trying to read.
+*/
+body::before {
+  content: "";
+  position: fixed; inset: 0; z-index: -1;
+  pointer-events: none;
+  background-image:
+    radial-gradient(1100px 680px at 8% -8%, var(--accent-soft), transparent 62%),
+    radial-gradient(900px 620px at 102% 4%, var(--accent-2-soft), transparent 58%);
+}
+
+h1, h2, h3, h4 {
+  margin: 0 0 .35rem;
+  line-height: 1.25;
+  letter-spacing: -.011em;
+  font-weight: 650;
+}
+h1 { font-size: 1.32rem; }
+h2 { font-size: 1.02rem; }
+h3 { font-size: .9rem; }
+
+p { margin: 0 0 .6rem; }
+a { color: var(--accent); }
+
+/* Anything a machine measured. Tabular figures so a column of rates does not
+   jitter as the digits change. */
+code, .mono, .num, .metric-value, .telemetry-val, .live-value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.muted { color: var(--text-muted); }
+.small { font-size: .82rem; }
+.grow { flex: 1 1 auto; min-width: 0; }
+
+/* A tiny uppercase label. Used for every section eyebrow and metric caption,
+   which is what makes the interface read as instrumentation. */
+.metric-label, .nav-group-label, .panel-eyebrow, .telemetry-key,
+.live-label, .status-name, .assistant-receipt-heading, .topbar-eyebrow {
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+.skip-link {
+  position: absolute; left: -9999px; top: 0; z-index: 100;
+  background: var(--accent); color: var(--accent-ink);
+  padding: .55rem .9rem; border-radius: 0 0 var(--radius-sm) 0;
+  font-weight: 700; text-decoration: none;
+}
+.skip-link:focus { left: 0; }
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Scrollbars, so a long table does not put a chunk of operating system grey
+   through the middle of the console. */
+* { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--border-strong); border-radius: var(--radius-pill);
+  border: 3px solid transparent; background-clip: content-box;
+}
+
+/* ---------- the application shell ---------- */
+
+/*
+  Sidebar plus workspace.
+
+  The sidebar is a fixed rail: navigation must not scroll away from somebody
+  watching a live session, and an operations tool is used by people who learn
+  where things are and then stop looking. The workspace scrolls on its own.
+*/
+.app-shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.sidebar {
+  position: sticky; top: 0; align-self: start;
+  height: 100vh;
+  display: flex; flex-direction: column;
+  border-right: 1px solid var(--border);
+  background:
+    linear-gradient(180deg, var(--surface-2), var(--surface-3) 42%);
+  /* It IS glass now, in the depth layer, and the note that used to say it
+     deliberately was not is quoted and answered there. */
+}
+
+/* =========================================================================
+   READABILITY IS THE CONSTRAINT, NOT THE DECORATION
+   -------------------------------------------------------------------------
+   The rule for everything below, and it is worth stating once rather than
+   defending eleven times:
+
+     NO LABEL IN THIS RAIL IS SET IN --text-dim.
+
+   --text-dim is the interface's quietest ink. It passes WCAG AA at the size
+   it is used, and a test computes that on every run - but it is the ink for a
+   micro-caption somebody glances at, and it was being used here for the
+   navigation itself. Over glass, over a drifting background, at a glance from
+   across a room, it was the reason the rail was hard to read.
+
+   So: every navigation label is --text, the colour body copy is set in, which
+   the contrast test holds to 10:1 rather than to 4.5:1. Section headings and
+   the user's role are --text-muted. --text-dim appears nowhere in the rail.
+
+   The weights follow the same idea - 600 for a navigation label, 700 for a
+   section heading, 750 for the product name - and the glass behind them is
+   built so that none of it lands on top of a word: the ambient gradients in
+   spatial.css are on pseudo-elements beneath the text, never over it.
+   ========================================================================= */
+
+/* ---------- the brand card ---------- */
+
+.sidebar-head {
+  display: flex; align-items: center; gap: .45rem;
+  padding: .7rem .62rem;
+  border-bottom: 1px solid var(--border-faint);
+  min-height: var(--topbar-h);
+}
+
+/* The brand is a CARD here rather than a line of text, because it is the one
+   place the product states what it is. Scoped to .rail-brand so the sign-in
+   screen's own brand, which uses the same three classes, is untouched. */
+.rail-brand {
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: .6rem;
+  padding: .45rem .5rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-faint);
+  background: linear-gradient(135deg, var(--surface-3), transparent 72%);
+}
+
+.rail-brand .brand-mark {
+  width: 36px; height: 36px;
+  border-radius: 11px;
+  font-size: .8rem;
+  position: relative;
+}
+
+/* The aperture. A camera iris around the mark, drawn as two rings - which is
+   the "glowing AI/camera visual element" and is also the only piece of
+   ornament in the brand card. Decoration, so it carries no state. */
+.rail-brand .brand-mark::after {
+  content: "";
+  position: absolute; inset: -3px;
+  border-radius: 13px;
+  border: 1px solid var(--ring);
+  opacity: .5;
+  pointer-events: none;
+}
+
+.rail-brand .brand-text strong {
+  font-size: .95rem;
+  font-weight: 750;
+  letter-spacing: -.004em;
+  color: var(--text);
+}
+
+/* The product's own description. --text-muted, 500: quieter than the name
+   above it and nowhere near the ink the old role line used.
+
+   Sized so the whole sentence FITS. At .685rem it needed 152px in a 146px
+   column and ellipsed to "Intelligent Attendance Syst...", which is a worse
+   failure than a slightly smaller line: a truncated tagline is a product
+   that cannot say what it is. The rail gained 8px and the line lost a
+   quarter of a point, and it now has about 5px to spare. */
+.brand-tagline {
+  display: block;
+  font-size: .67rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* Narrow the rail. A real button with a real accessible name, not an icon
+   somebody has to guess at: the name is in a .sr-only span and app.js keeps
+   it and aria-expanded in step with the width. */
+.rail-collapse {
+  flex: 0 0 auto;
+  display: grid; place-items: center;
+  width: 30px; height: 30px;
+  padding: 0;
+  border-radius: 9px;
+  border: 1px solid var(--border-faint);
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--fast) var(--ease),
+              background-color var(--fast) var(--ease),
+              border-color var(--fast) var(--ease);
+}
+.rail-collapse:hover {
+  color: var(--text);
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+}
+.rail-collapse-icon {
+  width: 16px; height: 16px;
+  stroke: currentColor; fill: none;
+  stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round;
+  transition: transform 240ms var(--ease);
+}
+
+/* ---------- navigation ---------- */
+
+.sidebar-nav {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: .85rem .62rem 1rem;
+}
+
+.nav-group { margin-bottom: 1.05rem; }
+.nav-group:last-child { margin-bottom: .3rem; }
+
+/*
+  A section heading.
+
+  --text-muted and 700, overriding the shared micro-label rule that sets every
+  eyebrow in the interface in --text-dim. A caption above a figure can be
+  quiet; a heading that tells somebody which part of the product they are
+  looking at cannot.
+*/
+.nav-group-label {
+  display: block;
+  padding: 0 .55rem .4rem;
+  font-size: .665rem;
+  font-weight: 700;
+  letter-spacing: .13em;
+  color: var(--text-muted);
+}
+
+/*
+  A navigation item.
+
+  The LABEL COMES FIRST IN THE MARKUP and the icon is moved to the left with
+  `order`, rather than the icon coming first. Two reasons, and the second is
+  the real one: a screen reader reads the label immediately, and the Academic
+  item has to keep its label adjacent to its `hidden` attribute for a test that
+  asserts the tab ships hidden. Visual order is presentation; this is exactly
+  what `order` is for.
+
+  The label is wrapped in a span, which is what the collapsed rail folds away
+  into a tooltip. It is the button's own text either way, so it is in the
+  accessibility tree whether or not it is visible.
+*/
+.nav-item {
+  display: flex; align-items: center; gap: .62rem;
+  width: 100%;
+  font: inherit;
+  font-size: .885rem;
+  font-weight: 600;
+  text-align: left;
+  color: var(--text);
+  background: none; border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: .52rem .6rem;
+  margin-bottom: .14rem;
+  cursor: pointer;
+  position: relative;
+  /* 220ms: the brief asked for 200-300, and the depth layer's 380ms default
+     for a hover lift is too slow for something clicked this often. */
+  transition: color 200ms var(--ease),
+              background-color 220ms var(--ease),
+              border-color 220ms var(--ease),
+              transform 220ms var(--ease),
+              box-shadow 220ms var(--ease);
+}
+
+.nav-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-icon {
+  order: -1;
+  flex: 0 0 auto;
+  width: 18px; height: 18px;
+  stroke: currentColor; fill: none;
+  stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round;
+  /* .88 rather than .78: an icon beside a near-white label has to read as
+     part of the same control, not as a watermark behind it. */
+  opacity: .88;
+  transition: opacity 200ms var(--ease), transform 220ms var(--ease),
+              color 200ms var(--ease);
+}
+
+/* Hover: a step towards the reader, the icon leading. Both small - the text
+   under the pointer must not move far enough to be hard to click. */
+.nav-item:hover {
+  background: var(--surface-3);
+  border-color: var(--border-faint);
+  transform: translateX(2px);
+}
+.nav-item:hover .nav-icon { opacity: 1; transform: scale(1.08); }
+
+.nav-item:focus-visible { transform: translateX(2px); }
+
+/*
+  THE CURRENT VIEW, and it is meant to be unmistakable.
+
+  Five signals, because one is never enough: a lit bar on the leading edge, a
+  tinted ground that fades out to the right so it never sits behind the end of
+  a long label, a real border, the accent on the icon, and the label a weight
+  heavier. aria-current carries the same fact to the accessibility tree, and
+  every one of these rules keys off it rather than off a class JavaScript has
+  to remember to remove.
+*/
+.nav-item[aria-current="page"] {
+  color: var(--text);
+  font-weight: 680;
+  background-color: var(--surface-3);
+  background-image: linear-gradient(90deg,
+                    var(--accent-soft), transparent 76%);
+  border-color: var(--border);
+  transform: translateX(2px);
+}
+.nav-item[aria-current="page"] .nav-icon {
+  opacity: 1;
+  color: var(--accent);
+}
+.nav-item[aria-current="page"]::before {
+  content: "";
+  position: absolute; left: -.62rem; top: 50%;
+  width: 3px; height: 1.1rem; margin-top: -.55rem;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent);
+}
+
+/* A destination inside another view - the model registry lives on the
+   administration page. Marked as a sub-item by its indent and its size, NOT
+   by making it fainter: it used to be set in --text-dim, which is exactly the
+   ink this pass removed from the rail. */
+.nav-sub {
+  font-size: .83rem;
+  font-weight: 550;
+  padding-left: 2.1rem;
+  color: var(--text-muted);
+}
+.nav-sub .nav-icon { opacity: .8; }
+.nav-sub:hover { color: var(--text); }
+.nav-sub:hover .nav-icon { opacity: 1; }
+
+/* ---------- the foot: who is signed in ---------- */
+
+.sidebar-foot {
+  padding: .7rem .62rem .8rem;
+  border-top: 1px solid var(--border-faint);
+  display: grid; gap: .55rem;
+}
+
+/* The user card. Same card treatment as the brand at the other end of the
+   rail, so the two read as a pair holding the navigation between them. */
+.rail-user {
+  display: flex; align-items: center; gap: .55rem;
+  padding: .5rem .55rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-faint);
+  background: linear-gradient(135deg, var(--surface-3), transparent 74%);
+  min-width: 0;
+}
+
+.rail-avatar {
+  flex: 0 0 auto;
+  display: grid; place-items: center;
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  font-family: var(--font-mono);
+  font-size: .72rem; font-weight: 700; letter-spacing: .02em;
+  color: var(--accent-ink);
+  background: linear-gradient(145deg, var(--accent), var(--accent-2));
+}
+
+.rail-user-text { display: grid; gap: 0; min-width: 0; }
+
+.rail-user-name {
+  font-size: .845rem;
+  font-weight: 650;
+  color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* The role. --text-muted and 500 - readable, and plainly secondary to the
+   name above it. */
+.rail-user-role {
+  font-size: .72rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.rail-signout {
+  flex: 0 0 auto;
+  display: grid; place-items: center;
+  width: 30px; height: 30px;
+  padding: 0;
+  margin-left: auto;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--fast) var(--ease),
+              background-color var(--fast) var(--ease),
+              border-color var(--fast) var(--ease);
+}
+.rail-signout .nav-icon { width: 16px; height: 16px; opacity: 1; }
+.rail-signout:hover {
+  color: var(--text);
+  background: var(--surface);
+  border-color: var(--border-faint);
+}
+
+/* The rail's own health line. One dot and one word: whether the backend is
+   answering. It is filled from /api/health like everything else, and it is
+   the ONLY status indicator in this card - there is no decorative "online"
+   badge, because a green dot that is green by default means nothing. */
+.sidebar-status {
+  display: flex; align-items: center; gap: .45rem;
+  padding: 0 .2rem;
+  font-size: .745rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.workspace { display: flex; flex-direction: column; min-width: 0; }
+
+/* ---------- the top bar ---------- */
+
+.topbar {
+  position: sticky; top: 0; z-index: 20;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-solid);
+}
+.topbar-inner {
+  display: flex; align-items: center; gap: 1rem;
+  flex-wrap: wrap;
+  padding: .55rem 1.25rem;
+  min-height: var(--topbar-h);
+}
+
+.topbar-title { display: grid; gap: .05rem; min-width: 0; }
+.topbar-view {
+  font-size: .98rem; font-weight: 650; margin: 0;
+  letter-spacing: -.01em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.topbar-actions {
+  display: flex; align-items: center; gap: .6rem;
+  flex-wrap: wrap; margin-left: auto;
+}
+
+/* The rail collapses on small screens and this button brings it back. Hidden
+   on the desktop layout, where the rail is always there. */
+.sidebar-toggle { display: none; }
+
+.brand { display: flex; align-items: center; gap: .6rem; min-width: 0; }
+.brand-mark {
+  display: grid; place-items: center;
+  width: 30px; height: 30px;
+  border-radius: 9px;
+  font-family: var(--font-mono);
+  font-size: .76rem; font-weight: 700; letter-spacing: .02em;
+  color: var(--accent-ink);
+  background: linear-gradient(145deg, var(--accent), var(--accent-2));
+  box-shadow: var(--glow-soft);
+  flex: 0 0 auto;
+}
+.brand-text { display: grid; gap: 0; min-width: 0; }
+.brand-text strong {
+  font-size: .92rem; letter-spacing: .005em; white-space: nowrap;
+}
+.brand-sub {
+  font-size: .68rem; font-weight: 600; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--text-dim);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.account { display: flex; align-items: center; gap: .55rem; flex-wrap: wrap; }
+.account-who { display: grid; gap: 0; text-align: right; }
+.account-who strong { font-size: .84rem; }
+
+.filters { display: flex; align-items: flex-end; gap: .6rem; flex-wrap: wrap; }
+
+/*
+  The global session flag.
+
+  Three states and each is a word: no session, one or more live, one or more on
+  break. The dot agrees with the word and is never the only signal.
+*/
+.session-flag {
+  display: inline-flex; align-items: center; gap: .4rem;
+  font: inherit; font-size: .76rem; font-weight: 650;
+  font-family: var(--font-mono); letter-spacing: .04em;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  padding: .22rem .6rem;
+  cursor: pointer; white-space: nowrap;
+}
+.session-flag:hover { border-color: var(--border-strong); color: var(--text); }
+.session-flag.is-live {
+  color: var(--present); border-color: var(--present);
+  background: var(--present-bg);
+}
+.session-flag.is-break {
+  color: var(--late); border-color: var(--late); background: var(--late-bg);
+}
+
+/* ---------- main, and the view switch ---------- */
+
+main {
+  flex: 1 1 auto;
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 1.25rem;
+  outline: none;
+}
+
+.view > h1 { margin-bottom: .15rem; }
+.scope-note {
+  color: var(--text-muted); font-size: .845rem;
+  max-width: 78ch; margin-bottom: 1.1rem;
+}
+
+.banner {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  background: var(--surface-2);
+  padding: .7rem .9rem; border-radius: var(--radius-sm);
+  margin-bottom: 1rem; font-size: .88rem;
+}
+.banner.warn { border-left-color: var(--late); background: var(--late-bg); }
+
+/* ---------- panels: four levels, on purpose ---------- */
+
+/*
+  The hierarchy rule, made concrete. A page where every container is the same
+  rounded card with the same shadow has no hierarchy; these four are visibly
+  different weights.
+*/
+
+/* Supporting analytics. The default, and the quietest. */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: 1rem 1.1rem;
+  margin-bottom: 1.1rem;
+}
+
+/* The one thing a page is for. Heavier border, real shadow, a hairline of
+   accent along the top edge, and the engineering grid behind it. */
+.panel-primary {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow);
+  position: relative;
+  overflow: hidden;
+}
+.panel-primary::before {
+  content: "";
+  position: absolute; inset: 0 0 auto 0; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: .6;
+}
+
+/* Tables and lists. No inner padding, because the table supplies its own and
+   a double gutter wastes the width a wide grid needs. */
+.data-panel { padding: 0; overflow: hidden; }
+.data-panel > .panel-head { padding: .85rem 1.1rem; }
+
+.panel-head {
+  display: flex; align-items: baseline; gap: .8rem;
+  flex-wrap: wrap;
+  margin-bottom: .55rem;
+}
+.panel-head h2, .panel-head h3 { margin: 0; }
+.panel-tools { margin-left: auto; display: flex; gap: .45rem; flex-wrap: wrap; }
+.detail-head {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 1rem; flex-wrap: wrap;
+}
+
+/* The engineering grid texture. Two repeating gradients at a low alpha,
+   applied only where a panel is meant to read as an instrument surface. */
+.grid-texture {
+  background-image:
+    linear-gradient(var(--bg-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--bg-grid) 1px, transparent 1px);
+  background-size: 28px 28px, 28px 28px;
+}
+
+/* ---------- the command hero ---------- */
+
+/*
+  The one piece of the interface that states what the product is. It carries no
+  figure of its own: the numbers next to it are the KPI modules, which come
+  from the backend.
+*/
+.hero {
+  display: flex; align-items: center; gap: 1rem;
+  flex-wrap: wrap;
+  padding: 1.05rem 1.2rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(135deg, var(--surface-2), var(--surface) 55%);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 1.1rem;
+  position: relative; overflow: hidden;
+}
+.hero-mark {
+  display: grid; place-items: center;
+  width: 44px; height: 44px; flex: 0 0 auto;
+  border-radius: 12px;
+  font-family: var(--font-mono); font-weight: 700; font-size: .95rem;
+  color: var(--accent-ink);
+  background: linear-gradient(145deg, var(--accent), var(--accent-2));
+  box-shadow: var(--glow-soft);
+}
+.hero-title {
+  margin: 0; font-size: 1.12rem; font-weight: 700;
+  letter-spacing: .055em; text-transform: uppercase;
+}
+.hero-sub {
+  margin: .1rem 0 0;
+  font-family: var(--font-mono); font-size: .76rem;
+  letter-spacing: .06em; text-transform: uppercase;
+  color: var(--accent);
+}
+.hero-meta {
+  margin-left: auto; display: flex; gap: 1.1rem; flex-wrap: wrap;
+  font-family: var(--font-mono); font-size: .76rem; color: var(--text-muted);
+}
+
+/* ---------- compact metrics (KPI modules) ---------- */
+
+.cards, .metric-grid {
+  list-style: none; margin: 0 0 1.1rem; padding: 0;
+  display: grid; gap: .7rem;
+  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+}
+.cards.small, .metric-grid.small {
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+}
+
+.card, .metric {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: .7rem .8rem;
+  display: grid; gap: .2rem;
+  align-content: start;
+  min-width: 0;
+}
+.card .label, .metric-label { display: block; }
+.card .value, .metric-value {
+  font-size: 1.5rem; font-weight: 650; line-height: 1.12;
+  letter-spacing: -.02em;
+}
+/* "No data" is not a number and must not be set like one. */
+.card .value.nodata, .metric-value.nodata {
+  font-size: 1rem; font-weight: 600; color: var(--text-dim);
+  letter-spacing: 0;
+}
+.card .sub, .metric-sub {
+  font-size: .745rem; color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- status modules (the engineering console) ---------- */
+
+.status-grid {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; gap: .5rem;
+  grid-template-columns: repeat(auto-fit, minmax(146px, 1fr));
+}
+.status-module {
+  display: grid; gap: .22rem;
+  padding: .6rem .7rem;
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.status-state {
+  display: flex; align-items: center; gap: .4rem;
+  font-family: var(--font-mono); font-size: .78rem; font-weight: 600;
+  letter-spacing: .04em;
+}
+.status-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: currentColor; flex: 0 0 auto;
+}
+
+/* The four operational states, as a left edge and a dot. Both carry the word
+   as well, which is what keeps this readable without colour. */
+.status-ok { border-left-color: var(--present); }
+.status-ok .status-state { color: var(--present); }
+.status-warn { border-left-color: var(--late); }
+.status-warn .status-state { color: var(--late); }
+.status-bad { border-left-color: var(--absent); }
+.status-bad .status-state { color: var(--absent); }
+.status-idle { border-left-color: var(--unknown); }
+.status-idle .status-state { color: var(--unknown); }
+
+.delivery-state {
+  display: flex; align-items: center; gap: .5rem;
+  padding: .55rem .75rem;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: .85rem; margin-bottom: .8rem;
+}
+
+/* ---------- status pills ---------- */
+
+/*
+  Every status in the product renders through one of these, and every one of
+  them is a symbol plus a word in a tinted capsule. The colour is the third
+  signal, never the first.
+*/
+.pill {
+  display: inline-flex; align-items: center; gap: .32rem;
+  padding: .1rem .48rem; border-radius: var(--radius-pill);
+  font-size: .745rem; font-weight: 700; white-space: nowrap;
+  border: 1px solid transparent;
+  font-family: var(--font-mono); letter-spacing: .02em;
+}
+.pill .sym { font-weight: 800; }
+
+.pill-PRESENT { color: var(--present); background: var(--present-bg); border-color: var(--present); }
+.pill-LATE { color: var(--late); background: var(--late-bg); border-color: var(--late); }
+.pill-PARTIAL { color: var(--partial); background: var(--partial-bg); border-color: var(--partial); }
+.pill-LEFT_EARLY { color: var(--early); background: var(--early-bg); border-color: var(--early); }
+.pill-ABSENT { color: var(--absent); background: var(--absent-bg); border-color: var(--absent); }
+.pill-UNKNOWN, .pill-MANUAL_OVERRIDE,
+.pill-SCHEDULED, .pill-CANCELLED {
+  color: var(--unknown); background: var(--unknown-bg); border-color: var(--unknown);
+}
+.pill-COMPLETED { color: var(--present); background: var(--present-bg); border-color: var(--present); }
+.pill-ACTIVE { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }
+
+/* Live runtime and presence states (Step 8). */
+.pill-IDLE { color: var(--unknown); background: var(--unknown-bg); border-color: var(--unknown); }
+.pill-STARTING, .pill-STOPPING { color: var(--late); background: var(--late-bg); border-color: var(--late); }
+.pill-RUNNING { color: var(--present); background: var(--present-bg); border-color: var(--present); }
+.pill-FAILED { color: var(--absent); background: var(--absent-bg); border-color: var(--absent); }
+.pill-RECOGNIZED { color: var(--present); background: var(--present-bg); border-color: var(--present); }
+.pill-TEMPORARILY_LOST { color: var(--late); background: var(--late-bg); border-color: var(--late); }
+.pill-SEEN_EARLIER { color: var(--unknown); background: var(--unknown-bg); border-color: var(--unknown); }
+
+/* Face enrollment. */
+.pill-ENROLLED { color: var(--present); background: var(--present-bg); border-color: var(--present); }
+.pill-NOT_ENROLLED { color: var(--unknown); background: var(--unknown-bg); border-color: var(--unknown); }
+
+/* Liveness (Step 9) and authenticity (Step 10). Three states each, and
+   UNCERTAIN is a real one - it is not drawn as a near-pass. */
+.pill-LIVE { color: var(--present); background: var(--present-bg); border-color: var(--present); }
+.pill-SPOOF { color: var(--absent); background: var(--absent-bg); border-color: var(--absent); }
+.pill-UNCERTAIN { color: var(--late); background: var(--late-bg); border-color: var(--late); }
+.pill-AUTHENTIC { color: var(--early); background: var(--early-bg); border-color: var(--early); }
+.pill-SUSPICIOUS { color: var(--late); background: var(--late-bg); border-color: var(--late); }
+
+/* Academic terms. PLANNED is deliberately the neutral colour: a term nobody
+   has activated is not a problem, it simply has not started. */
+.pill-PLANNED { color: var(--unknown); background: var(--unknown-bg); border-color: var(--unknown); }
+.pill-CLOSED { color: var(--present); background: var(--present-bg); border-color: var(--present); }
+
+/* Recognition models. Only ACTIVE is drawn as good, because only ACTIVE is in
+   production; VALIDATED means "good enough to consider", which is a different
+   claim and must not look like the same one. */
+.pill-model-ACTIVE { color: var(--present); background: var(--present-bg); border-color: var(--present); }
+.pill-model-VALIDATED { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }
+.pill-model-BASELINE { color: var(--accent-2); background: var(--accent-2-soft); border-color: var(--accent-2); }
+.pill-model-TESTING, .pill-model-TRAINING {
+  color: var(--late); background: var(--late-bg); border-color: var(--late);
+}
+.pill-model-RETIRED, .pill-model-UNKNOWN {
+  color: var(--unknown); background: var(--unknown-bg); border-color: var(--unknown);
+}
+
+/* Camera health. Reuses the same four status tokens as attendance, so a
+   healthy camera and a present student read as the same kind of good. */
+.pill-cam-online { color: var(--present); background: var(--present-bg); border-color: var(--present); }
+.pill-cam-offline { color: var(--absent); background: var(--absent-bg); border-color: var(--absent); }
+.pill-cam-degraded { color: var(--late); background: var(--late-bg); border-color: var(--late); }
+.pill-cam-unknown { color: var(--unknown); background: var(--unknown-bg); border-color: var(--unknown); }
+
+.cam-headline { display: flex; flex-direction: column; gap: .3rem; }
+.cam-headline-status {
+  display: flex; align-items: center; gap: .55rem; flex-wrap: wrap;
+}
+.cam-headline-name { font-size: 1.05rem; font-weight: 650; }
+/* A device id can be long; wrap it rather than widening the page. */
+.cam-headline p { overflow-wrap: anywhere; }
+.cam-error { color: var(--absent); overflow-wrap: anywhere; }
+#cameras-table code { overflow-wrap: anywhere; }
+
+/* A small neutral metadata capsule - a class id, a policy version, a count. */
+.chip {
+  display: inline-flex; align-items: center; gap: .3rem;
+  font-family: var(--font-mono); font-size: .72rem;
+  padding: .08rem .42rem; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--surface-2);
+  color: var(--text-muted); white-space: nowrap;
+}
+
+/* ---------- live status dot ---------- */
+
+/*
+  The pulse means something: a session is running and frames are arriving. It
+  is the only thing in the interface that animates on its own, and it stops
+  entirely under prefers-reduced-motion, where the ring is drawn once and left.
+*/
+.live-dot {
+  display: inline-block; width: 8px; height: 8px;
+  border-radius: 50%; background: var(--present);
+  box-shadow: 0 0 0 0 var(--present-bg);
+  animation: live-pulse 2s ease-out infinite;
+  flex: 0 0 auto;
+}
+@keyframes live-pulse {
+  0% { box-shadow: 0 0 0 0 var(--present-bg); }
+  70% { box-shadow: 0 0 0 7px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+.badge-live {
+  display: inline-flex; align-items: center; gap: .4rem;
+  font-family: var(--font-mono); font-size: .72rem; font-weight: 700;
+  letter-spacing: .1em; text-transform: uppercase;
+  color: var(--present);
+  background: var(--present-bg);
+  border: 1px solid var(--present);
+  border-radius: var(--radius-sm);
+  padding: .14rem .45rem;
+}
+
+/* ---------- tables ---------- */
+
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.data-table, .mini-table {
+  width: 100%; border-collapse: separate; border-spacing: 0;
+  font-size: .86rem;
+}
+.data-table th, .data-table td,
+.mini-table th, .mini-table td {
+  text-align: left; padding: .5rem .7rem;
+  border-bottom: 1px solid var(--border-faint);
+  vertical-align: middle;
+}
+/* Sticky, compact, quiet headers - a SaaS data grid rather than a boxed
+   table. The header stays while a long register scrolls under it. */
+.data-table th, .mini-table th {
+  position: sticky; top: 0; z-index: 1;
+  font-size: .68rem; font-weight: 700;
+  letter-spacing: .08em; text-transform: uppercase;
+  color: var(--text-dim);
+  /* OPAQUE, unlike every other surface in the interface.
+
+     This header is position: sticky, so the table's own rows pass underneath
+     it. On a translucent header they would be visible THROUGH the column
+     names while scrolling, which is the exact case rule 3 is about - and the
+     only place in the redesign where the glass had to be refused. */
+  background: var(--surface-solid);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.data-table td.num, .mini-table td.num { text-align: right; }
+.data-table tbody tr:hover, .mini-table tbody tr:hover {
+  background: var(--surface-2);
+}
+.data-table tbody tr:last-child td { border-bottom: 0; }
+
+/* A row that opens something. The pointer and the hover tint are the
+   affordance; the row also carries a real button, so this is not the only way
+   in. */
+tr.student-row { cursor: pointer; }
+tr.student-row:hover { background: var(--accent-soft); }
+
+.row-actions { display: flex; gap: .3rem; flex-wrap: wrap; }
+.row-actions-cell { white-space: nowrap; }
+
+.pager {
+  display: flex; align-items: center; gap: .6rem; flex-wrap: wrap;
+  padding: .6rem .8rem; font-size: .82rem; color: var(--text-muted);
+  border-top: 1px solid var(--border-faint);
+}
+
+.table-controls {
+  display: flex; align-items: flex-end; gap: .6rem; flex-wrap: wrap;
+  margin-bottom: .8rem;
+}
+
+/* ---------- forms ---------- */
+
+.field { display: grid; gap: .25rem; min-width: 0; }
+.field > label {
+  font-size: .72rem; font-weight: 650; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--text-dim);
+}
+.field-row { display: flex; gap: .7rem; flex-wrap: wrap; }
+.field-row > .field { flex: 1 1 160px; }
+.field-group { display: grid; gap: .6rem; }
+.field.checkbox {
+  display: flex; align-items: center; gap: .4rem;
+}
+.field.checkbox > label {
+  text-transform: none; letter-spacing: 0; font-size: .84rem;
+  font-weight: 500; color: var(--text);
+}
+
+input, select, textarea {
+  font: inherit; font-size: .875rem;
+  color: var(--text);
+  background: var(--surface-solid);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: .42rem .55rem;
+  min-width: 0; max-width: 100%;
+}
+input[type="file"] { padding: .32rem; font-size: .8rem; }
+input[type="checkbox"] { width: auto; accent-color: var(--accent); }
+input:hover, select:hover, textarea:hover { border-color: var(--border-strong); }
+input:focus, select:focus, textarea:focus {
+  border-color: var(--accent); outline: none;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+input:disabled, select:disabled, button:disabled {
+  opacity: .5; cursor: not-allowed;
+}
+::placeholder { color: var(--text-dim); }
+
+fieldset {
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: .7rem .8rem; margin: 0 0 .8rem;
+}
+legend {
+  font-size: .72rem; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--text-dim);
+  padding: 0 .3rem;
+}
+
+.form-error {
+  color: var(--absent); font-size: .84rem;
+  border-left: 2px solid var(--absent);
+  padding-left: .55rem; margin: .5rem 0;
+}
+
+/* ---------- buttons ---------- */
+
+/*
+  Five weights, and the hierarchy is the point: exactly one primary action per
+  context, everything else quieter. None of them is large - an operations tool
+  is used by people who click the same control hundreds of times and a big
+  button just means more distance to travel.
+*/
+.btn {
+  font: inherit; font-size: .845rem; font-weight: 600;
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: .4rem;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: .42rem .75rem;
+  cursor: pointer; white-space: nowrap;
+}
+.btn:hover { border-color: var(--border-strong); background: var(--surface-3); }
+
+.btn-primary {
+  color: var(--accent-ink);
+  background: linear-gradient(140deg, var(--accent), var(--accent-2));
+  border-color: transparent;
+  box-shadow: var(--shadow-sm);
+}
+.btn-primary:hover { box-shadow: var(--glow); border-color: transparent; }
+
+/* Ghost. For a secondary action next to a primary one. */
+.btn-quiet {
+  background: none; border-color: transparent; color: var(--text-muted);
+}
+.btn-quiet:hover { background: var(--surface-2); color: var(--text); }
+
+/* Restrained red. It is a border and a letterform, not a filled red slab -
+   a destructive action should be unmistakable, not loud. */
+.btn-danger {
+  color: var(--absent); background: var(--absent-bg);
+  border-color: var(--absent);
+}
+.btn-danger:hover { background: var(--absent); color: var(--surface-solid); }
+
+/* An inline action inside a table row. */
+.btn-link {
+  font: inherit; font-size: .81rem; font-weight: 600;
+  color: var(--accent); background: none; border: 0;
+  padding: .1rem .2rem; cursor: pointer; border-radius: 4px;
+}
+.btn-link:hover { text-decoration: underline; }
+
+/* ---------- empty states ---------- */
+
+.empty {
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 1.4rem 1.2rem;
+  text-align: center;
+  color: var(--text-muted);
+}
+.empty h2 { margin-bottom: .3rem; color: var(--text); font-size: .98rem; }
+.empty p { max-width: 62ch; margin: 0 auto .5rem; font-size: .86rem; }
+
+/* ---------- charts drawn in CSS ---------- */
+
+.bar-row {
+  display: grid; grid-template-columns: minmax(84px, 1fr) 2.6fr auto;
+  gap: .55rem; align-items: center;
+  margin-bottom: .3rem; font-size: .82rem;
+}
+.bar-track {
+  height: 7px; border-radius: var(--radius-pill);
+  background: var(--surface-3); overflow: hidden;
+}
+.bar-fill {
+  height: 100%; border-radius: var(--radius-pill);
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+}
+.bar-value {
+  font-family: var(--font-mono); font-size: .78rem; color: var(--text-muted);
+  text-align: right;
+}
+
+/* The presence timeline: when the camera saw somebody, as segments on a
+   track. Not a chart of a measurement - a record of intervals. */
+.timeline-row {
+  display: grid; grid-template-columns: minmax(96px, 150px) 1fr;
+  gap: .6rem; align-items: center; margin-bottom: .3rem;
+}
+.timeline-label {
+  font-size: .8rem; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.timeline-track {
+  position: relative; height: 13px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+  border: 1px solid var(--border-faint);
+  overflow: hidden;
+}
+.timeline-seg {
+  position: absolute; top: 0; bottom: 0;
+  background: linear-gradient(180deg, var(--present), var(--early));
+  opacity: .85;
+}
+.timeline-axis {
+  display: flex; justify-content: space-between;
+  font-family: var(--font-mono); font-size: .7rem; color: var(--text-dim);
+  margin-top: .2rem;
+}
+
+.trend { display: flex; align-items: center; gap: .4rem; }
+.trend-label { font-size: .8rem; color: var(--text-muted); }
+
+/* ---------- the live classroom console ---------- */
+
+/*
+  The strongest page in the product, and the one that has to look like a
+  monitoring console rather than a web page: one large frame, telemetry around
+  it, every value monospaced and every value REPORTED.
+
+  Nothing here invents a figure. A field the backend did not send reads "No
+  data" - see reported() in app.js - because a plausible zero next to a camera
+  is a reading nobody took.
+*/
+.live-strip {
+  display: flex; align-items: center; gap: .55rem; flex-wrap: wrap;
+  padding: .6rem .8rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  margin-bottom: .9rem;
+}
+.live-item {
+  display: grid; gap: .1rem;
+  padding: 0 .75rem;
+  border-left: 1px solid var(--border-faint);
+}
+.live-item:first-child { border-left: 0; padding-left: 0; }
+.live-value { font-size: .95rem; font-weight: 650; }
+
+/* Dense key/value telemetry. Two columns on a narrow panel, monospace
+   values, hairline separators - the shape a camera's own status page has. */
+.telemetry {
+  display: grid; gap: 0; margin: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.telemetry-item {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: .8rem;
+  padding: .42rem .7rem;
+  border-bottom: 1px solid var(--border-faint);
+  background: var(--surface);
+}
+.telemetry-item:last-child { border-bottom: 0; }
+.telemetry-val {
+  font-size: .82rem; font-weight: 600; text-align: right;
+  overflow-wrap: anywhere;
+}
+
+/* The frame.
+
+   aspect-ratio holds the box while the first frame is still arriving, so the
+   page does not jump when it lands. object-fit: contain, never cover: this is
+   the whole room, and cropping it to fill a box would hide the student at the
+   edge of the class - which is exactly the student a teacher is looking for. */
+.classroom-stage {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-deep);
+  overflow: hidden;
+  display: grid; place-items: center;
+}
+/*
+  The console: frame left, telemetry right.
+
+  Below the breakpoint it stacks, frame first - on a phone the picture is what
+  somebody opened the page for and the readings follow it.
+*/
+.console {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 300px);
+  gap: .9rem;
+  align-items: start;
+  margin-bottom: 1.1rem;
+}
+.console-side { display: grid; gap: .7rem; min-width: 0; }
+/* Stacked, not a strip: next to a 16:9 frame there is height to spend and the
+   readings are easier to compare in a column. */
+.console-side .live-strip { flex-direction: column; align-items: stretch; }
+.console-side .live-item { padding: .3rem 0; border-left: 0; }
+.console-side .cards { margin-bottom: 0; grid-template-columns: minmax(0, 1fr); }
+
+.classroom { display: block; min-width: 0; }
+
+/* The frame itself. Contained, never cropped - see .classroom-stage. */
+#live-view {
+  width: 100%; height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.classroom-idle {
+  display: grid; place-items: center; gap: .4rem;
+  text-align: center; color: var(--text-muted);
+  padding: 1.5rem;
+}
+.classroom-small { font-size: .8rem; color: var(--text-dim); }
+.classroom-note {
+  font-size: .78rem; color: var(--text-muted);
+  margin-top: .5rem;
+}
+
+/* Corner registration marks on the frame. Four thin L-shapes in CSS, the way
+   a viewfinder is marked - and purely decorative, so they carry no state. */
+.classroom-stage::before, .classroom-stage::after {
+  content: ""; position: absolute; width: 16px; height: 16px;
+  border: 1px solid var(--accent); opacity: .3; pointer-events: none;
+}
+.classroom-stage::before { top: 8px; left: 8px; border-width: 1px 0 0 1px; }
+.classroom-stage::after { bottom: 8px; right: 8px; border-width: 0 1px 1px 0; }
+
+.capture-stage {
+  position: relative; aspect-ratio: 4 / 3;
+  border-radius: var(--radius-sm); border: 1px solid var(--border);
+  background: var(--bg-deep); overflow: hidden;
+}
+.enroll-progress {
+  display: grid; gap: .35rem;
+  padding: .7rem .8rem;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.enroll-line { display: flex; gap: .5rem; align-items: baseline; font-size: .85rem; }
+
+.eligibility { font-family: var(--font-mono); font-size: .78rem; }
+
+/* ---------- roster ---------- */
+
+.roster {
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface);
+  max-height: 260px; overflow-y: auto;
+}
+.roster-row {
+  display: flex; align-items: center; gap: .5rem;
+  padding: .36rem .6rem;
+  border-bottom: 1px solid var(--border-faint);
+  font-size: .85rem;
+}
+.roster-row:last-child { border-bottom: 0; }
+.roster-controls { display: flex; gap: .4rem; flex-wrap: wrap; margin: .5rem 0; }
+
+/* The expected count. Neutral when it is what the teacher expected, amber when
+   it is not - and the warning is a word as well. */
+.roster-summary {
+  font-size: .82rem; color: var(--text-muted);
+  font-family: var(--font-mono);
+  padding: .4rem .6rem;
+  border-left: 2px solid var(--border-strong);
+}
+.roster-summary.warn {
+  color: var(--late); border-left-color: var(--late);
+  background: var(--late-bg);
+}
+
+/* ---------- meta lists and detail ---------- */
+
+.meta {
+  display: grid; gap: .35rem .9rem; margin: .5rem 0 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+.meta dt {
+  font-size: .68rem; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--text-dim);
+}
+.meta dd {
+  margin: 0 0 .4rem; font-size: .87rem;
+  font-family: var(--font-mono); overflow-wrap: anywhere;
+}
+
+.detail { display: grid; gap: .6rem; }
+.evidence {
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface-2); padding: .6rem .75rem;
+}
+.evidence-row, .doc-row {
+  display: flex; gap: .6rem; align-items: baseline;
+  font-size: .83rem; padding: .18rem 0;
+}
+.doc-name { font-weight: 600; overflow-wrap: anywhere; }
+.doc-size { font-family: var(--font-mono); color: var(--text-dim); font-size: .78rem; }
+
+.attendance-cell { display: flex; align-items: center; gap: .4rem; }
+.unverified-count { font-family: var(--font-mono); color: var(--text-muted); }
+
+/* ---------- the multi-class live console ---------- */
+
+/*
+  One panel per running session. The column cap comes from the session count
+  (--live-columns, set by the script); auto-fit and the minmax floor decide the
+  real number from the viewport. Nothing here knows or cares whether there are
+  three classes or fifteen.
+*/
+.live-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit,
+    minmax(min(100%, calc((100% - 2rem) / var(--live-columns, 3))), 1fr));
+  gap: .8rem;
+  margin-bottom: 1.1rem;
+  align-items: start;
+}
+
+/* The one action that is about all the classrooms rather than one of them.
+   Kept visually apart from the panels for that reason. */
+.live-global-actions {
+  display: flex; align-items: center; gap: .6rem;
+  flex-wrap: wrap;
+  margin: 0 0 .9rem;
+}
+
+/*
+  A classroom monitoring module - deliberately not the generic panel.
+
+  The left edge carries the session's state so a wall of panels can be scanned
+  at a glance, and it is a colour on top of a word, never instead of one.
+*/
+.live-panel {
+  display: grid;
+  /* head, stage, telemetry, roster, actions. The stage is the only row that
+     grows: the camera is what an operator is looking at, and everything else
+     is instrumentation around it. */
+  grid-template-rows: auto 1fr auto auto auto;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--present);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.live-panel.is-break { border-left-color: var(--late); }
+.live-panel.is-failed { border-left-color: var(--absent); }
+
+.live-panel-head {
+  display: flex; align-items: center; gap: .5rem;
+  flex-wrap: wrap;
+  padding: .5rem .65rem;
+  border-bottom: 1px solid var(--border-faint);
+  background: var(--surface-2);
+}
+.live-panel-state {
+  display: inline-flex; align-items: center; gap: .35rem;
+  flex: 0 0 auto;
+}
+.live-panel-word {
+  font-family: var(--font-mono); font-size: .7rem; font-weight: 700;
+  letter-spacing: .09em; color: var(--present);
+}
+.live-panel.is-break .live-panel-word { color: var(--late); }
+.live-panel.is-failed .live-panel-word { color: var(--absent); }
+
+.live-panel-name {
+  font-weight: 650; font-size: .9rem;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  min-width: 0; flex: 1 1 auto;
+}
+.live-panel-camera {
+  font-family: var(--font-mono); font-size: .72rem;
+  color: var(--text-dim); flex: 0 0 auto;
+}
+
+/* The camera. The panel's visual priority: it takes the row that grows, and
+   the frame is CONTAINED so the whole room stays visible. */
+.live-panel-stage {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: var(--bg-deep);
+  display: grid; place-items: center;
+  min-height: 118px;
+}
+.live-panel-frame {
+  width: 100%; height: 100%;
+  object-fit: contain;
+  display: block;
+}
+/* Behind the frame, so a camera that has not delivered yet shows this rather
+   than an empty black box with no explanation. */
+.live-panel-idle {
+  position: absolute; inset: 0;
+  display: grid; place-items: center;
+  font-family: var(--font-mono); font-size: .72rem;
+  color: var(--text-dim);
+  pointer-events: none;
+}
+.live-panel-idle::after { content: "WAITING FOR FRAMES"; }
+.live-panel-frame[src] + .live-panel-idle { display: none; }
+
+/* Compact telemetry: label left, monospace value right, hairline rows. */
+.live-panel-telemetry {
+  display: grid; grid-template-columns: 1fr auto;
+  gap: 0; margin: 0;
+  font-size: .78rem;
+}
+.live-panel-telemetry dt {
+  padding: .22rem .65rem;
+  border-top: 1px solid var(--border-faint);
+}
+.live-panel-telemetry dd {
+  margin: 0; padding: .22rem .65rem;
+  border-top: 1px solid var(--border-faint);
+  text-align: right;
+  font-family: var(--font-mono); font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/*
+  PRESENT NOW, inside a monitoring tile.
+
+  Capped by the backend at six names, so this is a short strip rather than
+  something that grows a panel out of its row when a class fills up. The count
+  line carries the real figure and the focused view carries the whole list.
+*/
+.live-panel-roster {
+  padding: .45rem .7rem .55rem;
+  border-top: 1px solid var(--border-faint);
+  display: grid; gap: .3rem;
+  min-width: 0;
+}
+.live-panel-roster-head {
+  display: flex; align-items: baseline; gap: .5rem;
+}
+.live-panel-roster-count { margin-left: auto; white-space: nowrap; }
+.live-panel-roster-list {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; gap: .12rem;
+}
+.live-panel-face {
+  display: flex; align-items: baseline; gap: .5rem;
+  font-size: .78rem; min-width: 0;
+}
+.live-panel-face-name {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  min-width: 0;
+}
+/* The reading is monospace and pushed right, so a column of them lines up and
+   a long name cannot shove it out of the tile. */
+.live-panel-face-state {
+  margin-left: auto;
+  font-family: var(--font-mono); font-size: .7rem;
+  letter-spacing: .04em;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.live-panel-actions {
+  display: flex; gap: .3rem; flex-wrap: wrap;
+  padding: .45rem .55rem;
+  border-top: 1px solid var(--border-faint);
+  background: var(--surface-2);
+}
+.live-panel-actions .btn { font-size: .78rem; padding: .3rem .55rem; }
+
+/* A button mid-request. The disable is what prevents a second submission; this
+   only makes the wait visible. */
+.btn[data-busy="true"] { opacity: .75; cursor: progress; }
+
+/* The focused panel. Same markup, more room - so the two cannot disagree
+   about what they report. */
+.live-panel-focused { border-left-width: 4px; }
+.live-panel-focused .live-panel-stage { min-height: 260px; }
+.live-panel-focused .live-panel-telemetry {
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+/* The other running classes while one is focused. Reachable in one click
+   rather than hidden behind a navigation. */
+.live-updated {
+  font-family: var(--font-mono); font-size: .72rem;
+  color: var(--text-dim); margin: -.5rem 0 .9rem;
+}
+
+/*
+  PRESENT NOW.
+
+  A row per verified identity: who, and what each independent layer says about
+  them. The three states are deliberately separate columns - being recognised
+  does not make somebody live, and neither makes them present for attendance.
+*/
+.present-now { margin-top: 1rem; }
+.present-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .3rem; }
+.present-row {
+  display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
+  padding: .4rem .6rem;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--present);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.present-row.is-held { border-left-color: var(--late); }
+.present-row.is-lost { border-left-color: var(--unknown); }
+.present-name { font-weight: 600; min-width: 0; }
+.present-id {
+  font-family: var(--font-mono); font-size: .72rem; color: var(--text-dim);
+}
+.present-seen {
+  font-family: var(--font-mono); font-size: .72rem; color: var(--text-muted);
+  margin-left: auto;
+}
+
+.focus-switcher { margin-top: .8rem; }
+.focus-switcher-row {
+  display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .35rem;
+}
+.focus-chip {
+  display: inline-flex; align-items: center; gap: .4rem;
+  font-size: .8rem;
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--present);
+}
+.focus-chip.is-break { border-left-color: var(--late); }
+
+/* ---------- report modes, and the seat grid ---------- */
+
+/*
+  Four readings of the same stored decisions, switched without leaving the
+  page. A real tablist: aria-selected on the buttons and `hidden` on the
+  panels, so a screen reader is told which of the four is showing.
+
+  No animation. A teacher switches to "By class" to read a number, and a panel
+  that slides in is a panel that is briefly unreadable.
+*/
+.mode-switch {
+  display: flex; flex-wrap: wrap; gap: .25rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.mode-switch button {
+  font: inherit; font-size: .845rem; font-weight: 600;
+  color: var(--text-muted); background: none;
+  border: 1px solid transparent; border-bottom: 0;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  padding: .42rem .7rem; cursor: pointer; white-space: nowrap;
+  margin-bottom: -1px;
+}
+.mode-switch button:hover { color: var(--text); background: var(--surface-2); }
+.mode-switch button[aria-selected="true"] {
+  color: var(--text);
+  background: var(--surface);
+  border-color: var(--border);
+  border-bottom: 1px solid var(--surface);
+}
+
+/*
+  The seat grid.
+
+  Named for what it is used for and NOT for what it is not: these are students
+  in roll order, not positions in a room. The column count comes from the
+  server as an inline custom property, so the screen and the printed sheet
+  agree.
+*/
+.seat-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--seat-columns, 6), minmax(0, 1fr));
+  gap: .45rem;
+}
+.seat {
+  border: 1px solid var(--border); border-left: 3px solid var(--unknown);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: .45rem .55rem;
+  display: flex; flex-direction: column; gap: .2rem;
+  min-width: 0;
+}
+.seat-roll {
+  font-family: var(--font-mono); font-size: .72rem; font-weight: 700;
+  color: var(--text-dim);
+}
+.seat-name { font-weight: 600; font-size: .85rem; overflow-wrap: anywhere; }
+.seat-id {
+  font-family: var(--font-mono); font-size: .7rem;
+  color: var(--text-dim); overflow-wrap: anywhere;
+}
+
+/* The status colour is a left edge as well as a pill, so a greyscale printout
+   still groups the absences - the pill carries the symbol and the word. */
+.seat-PRESENT { border-left-color: var(--present); }
+.seat-LATE { border-left-color: var(--late); }
+.seat-PARTIAL { border-left-color: var(--partial); }
+.seat-LEFT_EARLY { border-left-color: var(--early); }
+.seat-ABSENT { border-left-color: var(--absent); }
+.seat-NONE { border-left-style: dashed; }
+
+/* A term and its classes. Native disclosure, so it works with no script. */
+.term-card { margin-bottom: .6rem; padding: 0; }
+.term-card > summary {
+  cursor: pointer; padding: .6rem .8rem;
+  display: flex; flex-wrap: wrap; align-items: center; gap: .6rem;
+}
+.term-card > summary h3 { font-size: .93rem; margin: 0; }
+.term-card .term-figures {
+  display: flex; flex-wrap: wrap; gap: .75rem;
+  font-family: var(--font-mono); font-size: .78rem; color: var(--text-muted);
+}
+.term-card[open] > summary { border-bottom: 1px solid var(--border); }
+.term-card .table-scroll { padding: 0; }
+.term-card > p { padding: .5rem .8rem 0; }
+
+/* ---------- the assistant ---------- */
+
+/*
+  An embedded intelligence layer, not a chat window. The answer is one block of
+  text and the RECEIPT is styled to be read next to it: a figure about a
+  student's attendance that cannot be checked has to be taken on trust, and the
+  whole point of this layer is that it does not.
+*/
+.assistant-text {
+  font-size: 1rem; line-height: 1.55;
+  margin: .8rem 0;
+  padding-left: .7rem;
+  border-left: 2px solid var(--accent);
+}
+/* A question that was not understood reads as an absence of an answer rather
+   than as a quieter answer. */
+.assistant-unknown { color: var(--text-muted); border-left-color: var(--unknown); }
+
+.assistant-receipt-heading { display: block; margin: 1rem 0 .35rem; }
+.assistant-sources { list-style: none; display: grid; gap: .35rem; padding: 0; margin: 0; }
+.assistant-sources li {
+  border: 1px solid var(--border); border-left: 2px solid var(--accent-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  padding: .4rem .6rem;
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: .4rem;
+  font-size: .82rem;
+}
+.assistant-sources code { overflow-wrap: anywhere; font-size: .8rem; }
+.assistant-where { color: var(--accent); font-weight: 650; font-size: .78rem; }
+
+.example-list { list-style: none; display: grid; gap: .3rem; padding: 0; margin: 0; }
+.example-list li {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: .3rem;
+  padding: .22rem .4rem; border-radius: var(--radius-sm);
+}
+.example-list li:hover { background: var(--surface-2); }
+
+/* ---------- model registry ---------- */
+
+/*
+  The page that has to read as machine learning. A model is presented as a
+  specification sheet: identity, version, kind, status, and the measured
+  numbers - with "not measured" said in words wherever nobody measured one.
+*/
+.model-grid {
+  display: grid; gap: .7rem;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+.model-card {
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface); padding: .8rem .85rem;
+  display: grid; gap: .5rem;
+}
+.model-head { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.model-head .model-name {
+  font-family: var(--font-mono); font-weight: 700; font-size: .92rem;
+}
+.model-meta {
+  display: flex; gap: .4rem; flex-wrap: wrap;
+  font-family: var(--font-mono); font-size: .72rem; color: var(--text-dim);
+  text-transform: uppercase; letter-spacing: .06em;
+}
+
+/* ---------- quick actions ---------- */
+
+.quick-panel { padding: .85rem 1rem; }
+.quick-actions { display: flex; gap: .5rem; flex-wrap: wrap; }
+.quick {
+  display: flex; align-items: center; gap: .5rem;
+  font: inherit; font-size: .85rem; font-weight: 600;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: .5rem .7rem; cursor: pointer; text-align: left;
+}
+.quick:hover { border-color: var(--accent); background: var(--surface-3); }
+.quick-mark {
+  display: grid; place-items: center;
+  width: 22px; height: 22px; border-radius: 6px;
+  background: var(--accent-soft); color: var(--accent);
+  font-family: var(--font-mono); font-size: .78rem; flex: 0 0 auto;
+}
+
+.today-panel { }
+.today-live {
+  display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
+  font-size: .86rem;
+  padding: .5rem .7rem; border-radius: var(--radius-sm);
+  background: var(--present-bg);
+  border: 1px solid var(--present);
+  margin-bottom: .6rem;
+}
+
+.panel-grid {
+  display: grid; gap: 1.1rem;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  align-items: start;
+}
+
+/* ---------- dialogs ---------- */
+
+dialog {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface-solid);
+  color: var(--text);
+  box-shadow: var(--shadow-lift);
+  padding: 0;
+  max-width: min(560px, calc(100vw - 2rem));
+  width: 100%;
+}
+dialog::backdrop { background: rgba(2, 5, 11, .62); }
+.dialog-body { padding: 1.1rem 1.2rem 1.2rem; display: grid; gap: .5rem; }
+.dialog-body h2 { margin-bottom: .2rem; }
+.dialog-actions {
+  display: flex; gap: .5rem; justify-content: flex-end;
+  flex-wrap: wrap; margin-top: .7rem;
+}
+
+.credential {
+  font-family: var(--font-mono); font-size: .9rem;
+  padding: .45rem .6rem; border-radius: var(--radius-sm);
+  background: var(--surface-3); border: 1px dashed var(--border-strong);
+  overflow-wrap: anywhere;
+}
+/*
+  The sign-in screen is shown INSTEAD of the console, not over it.
+
+  body.locked is set while the auth screen is up. Hiding the shell rather than
+  dimming it is the honest version: while that screen is visible the page holds
+  no attendance data, because none has been fetched.
+*/
+body.locked { overflow: hidden; }
+body.locked .app-shell { display: none; }
+
+/*
+  AND THE GATE IS A DIFFERENT COLOUR FROM THE CONSOLE.
+
+  Nine tokens, remapped on the one element that already means "nobody has
+  signed in yet". Everything downstream picks the new hues up without a rule
+  of its own - the ground wash on body::before, the brand mark's gradient,
+  the primary button, the focus ring, the skip link, and the canvas scene,
+  which reads these values back out of the computed style - because all of it
+  was written against --accent rather than against a literal.
+
+  So signing in is not a navigation and not a second stylesheet. The class
+  comes off the body and the whole page repaints from violet to cyan.
+*/
+body.locked {
+  --accent: var(--gate);
+  --accent-2: var(--gate-2);
+  --accent-soft: var(--gate-soft);
+  --accent-2-soft: var(--gate-2-soft);
+  --accent-ink: var(--gate-ink);
+  --ring: var(--gate-ring);
+  --bg: var(--gate-bg);
+  --bg-deep: var(--gate-bg-2);
+  background: var(--bg);
+}
+.assignment-row { display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; }
+/* Contained, never cropped. Filling a square box with a portrait cuts the
+   face out of it, which is the one thing a photograph of a person is for. */
+.staff-photo {
+  border-radius: var(--radius-sm); border: 1px solid var(--border);
+  object-fit: contain; background: var(--surface-2);
+}
+
+/* ---------- the gate ---------- */
+
+/*
+  THE SIGN-IN SCREEN.
+
+  Two columns on a real screen: a stage that states what the product is, and
+  the form. The stage is decoration - it is aria-hidden, it carries no
+  measurement, and it is the first thing to go when the viewport runs out of
+  room, because the form is the page and the stage is only the reason somebody
+  looks at it for a second longer.
+
+  Everything drawn here is gradients, borders and transforms. The 3D is real
+  3D - a preserve-3d cube and three tilted orbit rings, composited by the GPU
+  - and there is no library, no canvas for it and no file fetched. The moving
+  half lives in the depth layer at the bottom of this file, so it can be
+  switched off in one place.
+*/
+
+.auth-screen {
+  position: relative;
+  min-height: 100vh;
+  display: grid; place-items: center;
+  padding: 1.5rem;
+  overflow: hidden;
+  /* One vanishing point for the stage AND the card, so the two tilt towards
+     the same horizon rather than each towards its own. */
+  perspective: 1500px;
+}
+#auth-canvas {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  display: block; pointer-events: none;
+}
+
+.gate {
+  position: relative; z-index: 1;
+  width: 100%; max-width: 1000px;
+  display: grid; gap: 2.2rem;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 412px);
+  align-items: center;
+  transform-style: preserve-3d;
+}
+
+/* -- the left column: what this is ---------------------------------------- */
+
+.gate-intro { display: grid; gap: .7rem; min-width: 0; }
+.gate-eyebrow {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: .7rem; font-weight: 700;
+  letter-spacing: .22em; text-transform: uppercase;
+  color: var(--gate-2);
+}
+.gate-headline {
+  margin: 0;
+  font-size: clamp(1.85rem, 4.4vw, 2.85rem);
+  font-weight: 750; line-height: 1.06;
+  letter-spacing: -.028em;
+  color: var(--text);
+}
+/* One emphasised word in the gate's own colour. A gradient across the whole
+   headline puts its pale end on the pale end of the ground; one word keeps
+   the sentence readable in both themes and still announces the palette. */
+.gate-headline em {
+  font-style: normal;
+  background: linear-gradient(104deg, var(--gate), var(--gate-2));
+  -webkit-background-clip: text; background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+/* The fallback where background-clip: text is not honoured: the word is a
+   colour that passes on both grounds rather than an invisible one. */
+@supports not ((background-clip: text) or (-webkit-background-clip: text)) {
+  .gate-headline em {
+    color: var(--gate-2);
+    -webkit-text-fill-color: currentColor;
+  }
+}
+.gate-lede {
+  margin: 0; max-width: 46ch;
+  font-size: .92rem; color: var(--text-muted);
+}
+
+/* Three statements about the product, each one true of the code in this
+   repository. None of them is a figure: the page has fetched no data and is
+   not signed in, so it has nothing to report and does not pretend to. */
+.gate-points {
+  list-style: none; margin: .3rem 0 0; padding: 0;
+  display: grid; gap: .55rem;
+}
+.gate-points li {
+  display: grid; grid-template-columns: auto minmax(0, 1fr);
+  gap: .6rem; align-items: start;
+  font-size: .83rem; color: var(--text-muted);
+}
+.gate-points b {
+  display: block; color: var(--text);
+  font-size: .85rem; font-weight: 650;
+}
+.gate-tick {
+  display: grid; place-items: center;
+  width: 20px; height: 20px; margin-top: .12rem;
+  border-radius: 50%;
+  border: 1px solid var(--gate-ring);
+  background: var(--gate-soft);
+  color: var(--gate);
+  font-size: .64rem; font-weight: 800;
+}
+
+/* -- the 3D stage --------------------------------------------------------- */
+
+.gate-stage {
+  position: relative;
+  display: grid; place-items: center;
+  min-height: 272px; margin-bottom: .5rem;
+  /* Its OWN vanishing point, rather than the screen's.
+
+     The stage sits inside the intro column, which fades in - and opacity
+     below 1 flattens an inherited 3D context, so a cube relying on an
+     ancestor's perspective would render orthographically for the length of
+     the entrance and then pop. A perspective declared here cannot be
+     flattened by anything above it. */
+  perspective: 900px;
+}
+
+/*
+  Three orbit rings, tilted towards the shared horizon.
+
+  Each is a circle with two of its four border colours brightened, and that is
+  what makes the spin visible: a circle of one colour rotating about its own
+  axis shows nothing at all. The tilt and the yaw are per-ring custom
+  properties, so one keyframe pair in the depth layer can serve all three
+  without flattening them into the same plane.
+*/
+.gate-rings {
+  position: absolute; inset: 0;
+  display: grid; place-items: center;
+  transform-style: preserve-3d; pointer-events: none;
+}
+.gate-rings > span {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid var(--gate-line);
+  border-top-color: var(--gate-2);
+  border-right-color: var(--gate-ring);
+}
+/* The bead on the inner ring. It orbits because its ring does, which is a
+   good deal cheaper than animating a position. */
+.gate-ring-b::after {
+  content: "";
+  position: absolute; top: -4px; left: calc(50% - 4px);
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--gate-2);
+  box-shadow: 0 0 14px var(--gate-2);
+}
+.gate-ring-a { --tilt: 73deg; --yaw: 0deg;   width: 232px; height: 232px; }
+.gate-ring-b { --tilt: 66deg; --yaw: 26deg;  width: 182px; height: 182px; }
+.gate-ring-c { --tilt: 79deg; --yaw: -18deg; width: 288px; height: 288px; }
+
+/* The cube: six faces pushed half an edge length along each axis. The only
+   solid in the whole interface, and the thing the eye lands on first. */
+.gate-cube {
+  position: relative;
+  width: 104px; height: 104px;
+  transform-style: preserve-3d;
+  transform: rotateX(-20deg);
+}
+.gate-face {
+  position: absolute; inset: 0;
+  display: grid; place-items: center;
+  border: 1px solid var(--gate-line);
+  border-radius: 12px;
+  background: linear-gradient(145deg, var(--gate-soft), var(--gate-2-soft));
+  box-shadow: inset 0 0 28px var(--gate-soft);
+  font-family: var(--font-mono);
+  font-size: 1.05rem; font-weight: 700; letter-spacing: .12em;
+  color: var(--gate);
+}
+.gate-face-front  { transform: translateZ(52px); }
+.gate-face-back   { transform: rotateY(180deg) translateZ(52px); }
+.gate-face-right  { transform: rotateY(90deg) translateZ(52px); }
+.gate-face-left   { transform: rotateY(-90deg) translateZ(52px); }
+.gate-face-top    { transform: rotateX(90deg) translateZ(52px); }
+.gate-face-bottom { transform: rotateX(-90deg) translateZ(52px); }
+
+/* -- the card ------------------------------------------------------------- */
+
+.auth-card {
+  position: relative; z-index: 1;
+  width: 100%; max-width: 412px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lift);
+  padding: 1.4rem 1.4rem 1.2rem;
+  display: grid; gap: .7rem;
+}
+.auth-brand { margin-bottom: .3rem; }
+.auth-switch {
+  display: flex; gap: .25rem; padding: .2rem;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.auth-switch button {
+  flex: 1 1 0; font: inherit; font-size: .83rem; font-weight: 600;
+  color: var(--text-muted); background: none; border: 0;
+  border-radius: calc(var(--radius-sm) - 2px);
+  padding: .34rem .5rem; cursor: pointer;
+}
+.auth-switch button[aria-selected="true"] {
+  color: var(--text); background: var(--surface-solid);
+  box-shadow: var(--shadow-sm);
+}
+.auth-note { margin: 0; font-size: .76rem; color: var(--text-dim); }
+.auth-recover { font-size: .8rem; }
+
+/*
+  The appearance control, on the gate as well as in the rail.
+
+  The rail lives inside .app-shell, which body.locked hides - so without this
+  the one screen every user sees first was the one screen with no way to
+  choose day or night. Same three states, same aria-checked contract, same
+  applyTheme(), which now updates both switches rather than one.
+*/
+.auth-appearance {
+  display: flex; align-items: center; gap: .5rem;
+  flex-wrap: wrap;
+  margin-top: .1rem; padding-top: .55rem;
+  border-top: 1px solid var(--border-faint);
+}
+.auth-appearance > .metric-label { margin-right: auto; }
+
+.portal-hero {
+  display: flex; align-items: center; gap: .9rem; flex-wrap: wrap;
+}
+.portal-ring {
+  display: grid; place-items: center;
+  width: 54px; height: 54px; border-radius: 50%;
+  border: 2px solid var(--accent);
+  font-family: var(--font-mono); font-weight: 700;
+  color: var(--accent); background: var(--accent-soft);
+  flex: 0 0 auto;
+}
+.portal-note { font-size: .8rem; color: var(--text-muted); }
+
+/* ---------- footer ---------- */
+
+.footer {
+  margin-top: 1.4rem; padding: .9rem 0 1.5rem;
+  border-top: 1px solid var(--border-faint);
+  color: var(--text-dim); font-size: .76rem;
+  max-width: 92ch;
+}
+.footer strong { color: var(--text-muted); }
+
+/* =========================================================================
+   THE DEPTH LAYER
+
+   Everything below this line is DECORATION: glass, illumination, elevation and
+   the handful of transitions that make the interface feel engineered rather
+   than assembled.
+
+   Two contracts, both asserted by tests/test_theme_toggle.py, which slices
+   this file at the rule immediately below:
+
+     1. Nothing here references a status colour. Decoration must not carry
+        meaning - if a glow could mean "absent", the glow would have to be
+        correct, and it is not information.
+
+     2. backdrop-filter is applied ONLY to chrome: panels, cards, empty states,
+        dialogs, the sign-in card and the top bar. Never behind a number. A
+        blur behind a figure somebody is reading is the one place translucency
+        actually costs legibility.
+   ========================================================================= */
+
+.theme-switch {
+  display: flex; gap: .15rem; padding: .15rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.theme-switch button {
+  font: inherit; font-size: .78rem; font-weight: 600;
+  color: var(--text-muted); background: none; border: 0;
+  border-radius: calc(var(--radius-sm) - 3px);
+  padding: .22rem .45rem; cursor: pointer; white-space: nowrap;
+  transition: color var(--fast) linear, background var(--fast) linear,
+              transform var(--fast) var(--ease);
+}
+.theme-switch button:hover {
+  color: var(--text); background: var(--surface-3);
+  transform: translateY(-1px);
+}
+/* The chosen theme is marked by WEIGHT and an outline as well as colour, so
+   the state survives greyscale - and aria-checked is what the selector keys
+   off, which means the appearance and the accessibility tree cannot disagree. */
+.theme-switch button[aria-checked="true"] {
+  color: var(--text);
+  background: var(--surface-solid);
+  font-weight: 750;
+  box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--border-strong);
+}
+
+/* Glass, on chrome only. */
+.panel, .card, .empty {
+  backdrop-filter: blur(var(--blur)) saturate(118%);
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(118%);
+}
+dialog, .auth-card {
+  backdrop-filter: blur(calc(var(--blur) * 1.4)) saturate(120%);
+  -webkit-backdrop-filter: blur(calc(var(--blur) * 1.4)) saturate(120%);
+}
+.topbar {
+  backdrop-filter: blur(var(--blur)) saturate(118%);
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(118%);
+}
+dialog::backdrop { backdrop-filter: blur(3px); }
+
+/* Elevation on hover, for the containers that are interactive or that a reader
+   is scanning. A 1px lift and a slightly stronger edge - enough to register,
+   not enough to shift the text under the pointer. */
+.panel, .card, .btn, .quick, .seat, .model-card,
+.status-module, .telemetry-item, .assistant-sources li, .example-list li {
+  transition: background var(--fast) linear, border-color var(--fast) linear,
+              box-shadow var(--slow) var(--ease),
+              transform var(--slow) var(--ease), color var(--fast) linear;
+}
+.panel:hover { border-color: var(--border-strong); box-shadow: var(--shadow); }
+.card:hover, .model-card:hover, .status-module:hover {
+  transform: translateY(-1px);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow);
+}
+.btn:hover, .quick:hover { transform: translateY(-1px); }
+.btn:active, .quick:active, .nav-item:active { transform: translateY(0); }
+
+/*
+  The card tilt.
+
+  A perspective container with a small rotation on hover. It is the one piece
+  of ornament in the interface, it is on the KPI modules only, and it is
+  switched off completely under prefers-reduced-motion - including the
+  perspective itself, because a 3D container with no rotation renders
+  identically to a flat one and removing it costs nothing.
+*/
+.cards { perspective: 900px; }
+.cards .card { transform-style: preserve-3d; }
+.cards .card:hover {
+  transform: translateY(-2px) rotateX(1.6deg);
+  box-shadow: var(--shadow-lift);
+}
+.cards .card .value { transition: transform var(--slow) var(--ease); }
+.cards .card:hover .value { transform: translateZ(10px); }
+
+/* Panel entrance. One short fade-and-rise when a view appears, so switching
+   pages reads as a transition rather than a flicker. It runs once and leaves
+   no transform behind. */
+@keyframes panel-in {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: none; }
+}
+.view:not([hidden]) > .panel,
+.view:not([hidden]) > .hero,
+.view:not([hidden]) > .cards,
+.view:not([hidden]) > .metric-grid {
+  animation: panel-in var(--slow) var(--ease) both;
+}
+
+/* Skeleton shimmer, for a panel waiting on a request. */
+@keyframes skeleton-sweep {
+  from { background-position: -160% 0; }
+  to { background-position: 260% 0; }
+}
+.skeleton {
+  border-radius: var(--radius-sm);
+  background-image: linear-gradient(90deg,
+    var(--surface-2) 12%, var(--surface-3) 32%, var(--surface-2) 52%);
+  background-size: 220% 100%;
+  animation: skeleton-sweep 1.5s linear infinite;
+  color: transparent;
+  min-height: 1em;
+}
+
+/* Tooltips for icon-only controls. A title attribute is the accessible answer
+   and the browser draws it; this styles the ones we draw ourselves. */
+[data-tip] { position: relative; }
+[data-tip]:hover::after, [data-tip]:focus-visible::after {
+  content: attr(data-tip);
+  position: absolute; left: 50%; bottom: calc(100% + 6px);
+  transform: translateX(-50%);
+  background: var(--surface-solid); color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  padding: .25rem .5rem; font-size: .76rem; white-space: nowrap;
+  pointer-events: none; z-index: 40;
+}
+
+
+/* =========================================================================
+   THE GATE, IN MOTION
+
+   The 3D on the sign-in screen: the cube turns, the three rings orbit on
+   their own tilts, and the card carries a sweeping halo and a bloom. All of
+   it is transforms and gradients, all of it is in this one place, and all of
+   it is switched off by name in the reduced-motion block below.
+   ========================================================================= */
+
+/* The cube keeps its tilt and turns about the vertical. Written as a pair of
+   full transforms rather than a bare rotateY, because an animation's
+   transform REPLACES the element's own - a keyframe of rotateY(360deg) alone
+   would quietly flatten the -20deg lean the static rule sets. */
+@keyframes cube-turn {
+  from { transform: rotateX(-20deg) rotateY(0deg); }
+  to   { transform: rotateX(-20deg) rotateY(360deg); }
+}
+.gate-cube { animation: cube-turn 22s linear infinite; }
+
+/* One keyframe pair for all three rings. --tilt and --yaw are declared per
+   ring, so each keeps its own plane while sharing the spin. */
+@keyframes ring-orbit {
+  from { transform: rotateX(var(--tilt)) rotateY(var(--yaw)) rotateZ(0deg); }
+  to   { transform: rotateX(var(--tilt)) rotateY(var(--yaw)) rotateZ(360deg); }
+}
+.gate-ring-a { animation: ring-orbit 17s linear infinite; }
+.gate-ring-b { animation: ring-orbit 11s linear infinite reverse; }
+.gate-ring-c { animation: ring-orbit 29s linear infinite; }
+
+/* The arrival. The stage scales up from slightly small, the text rises, and
+   the card fades in behind both - a card that TRANSLATED would fight the
+   pointer tilt below for the same transform property. */
+@keyframes stage-in {
+  from { opacity: 0; transform: scale(.9); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes gate-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes gate-fade { from { opacity: 0; } to { opacity: 1; } }
+
+.auth-screen:not([hidden]) .gate-stage { animation: stage-in 780ms var(--ease) both; }
+.auth-screen:not([hidden]) .gate-intro { animation: gate-rise 620ms var(--ease) both; }
+.auth-screen:not([hidden]) .auth-card  { animation: gate-fade 560ms 110ms var(--ease) both; }
+
+/*
+  The card leans towards the pointer.
+
+  app.js writes two angles into --lean-x / --lean-y on pointermove and clears
+  them on leave; the transform here is the only thing that reads them, and
+  their initial values mean the card is square when nothing has moved. This is
+  why the entrance above fades the card rather than sliding it: one element
+  cannot be animating transform and tracking a pointer with it at once.
+*/
+.auth-card {
+  transform-style: preserve-3d;
+  transform: rotateX(var(--lean-x, 0deg)) rotateY(var(--lean-y, 0deg));
+  transition: transform 240ms var(--ease), box-shadow var(--slow) var(--ease);
+  isolation: isolate;
+}
+
+/*
+  The sweeping halo on the card's edge.
+
+  Two pixels of conic gradient outside an opaque card, which is the whole
+  trick: the card's own background covers the middle and only the rim shows.
+
+  The sweep animates a REGISTERED custom property, because an angle inside a
+  gradient is not animatable otherwise and rotating the element instead would
+  swing its corners out from behind the card. Where @property is not
+  supported the ring simply sits still, which is a static gradient edge and
+  not a broken one.
+*/
+@property --halo {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+.auth-card::before {
+  content: "";
+  position: absolute; inset: -2px; z-index: -1;
+  border-radius: calc(var(--radius-lg) + 2px);
+  background: conic-gradient(from var(--halo),
+    transparent 0 22%, var(--gate) 37%, var(--gate-2) 50%,
+    transparent 65% 100%);
+  animation: halo-sweep 7.5s linear infinite;
+  pointer-events: none;
+}
+@keyframes halo-sweep { to { --halo: 360deg; } }
+
+/* The bloom under the card. filter, not backdrop-filter: it blurs its own
+   gradient rather than the page behind it, so it costs no readback and sits
+   behind nothing anybody reads. */
+.auth-card::after {
+  content: "";
+  position: absolute; inset: -44px -26px; z-index: -2;
+  border-radius: 50%;
+  background:
+    radial-gradient(58% 58% at 28% 18%, var(--gate-soft), transparent 70%),
+    radial-gradient(54% 54% at 76% 86%, var(--gate-2-soft), transparent 72%);
+  filter: blur(26px);
+  pointer-events: none;
+}
+
+/* =========================================================================
+   SIGNING IN OPENS THE CONSOLE
+
+   body.booting is set for one beat after the gate comes down, so the console
+   ARRIVES rather than appearing. It is the visual half of the palette swap:
+   the rail slides in from the edge, the bar drops, the workspace rises, and
+   what rises is already cyan.
+   ========================================================================= */
+
+@keyframes shell-boot {
+  from { opacity: 0; transform: translateY(12px) scale(.995); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes rail-boot {
+  from { opacity: 0; transform: translateX(-18px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes bar-boot {
+  from { opacity: 0; transform: translateY(-12px); }
+  to   { opacity: 1; transform: none; }
+}
+
+body.booting main { animation: shell-boot 580ms 140ms var(--ease) both; }
+body.booting .topbar { animation: bar-boot 440ms 70ms var(--ease) both; }
+
+/* The rail only slides on the desktop layout. Below 1080px the same element
+   uses transform to be an off-canvas drawer, and an entrance animation on
+   that property would pull a closed drawer open. */
+@media (min-width: 1081px) {
+  body.booting .sidebar { animation: rail-boot 500ms var(--ease) both; }
+}
+
+/* =========================================================================
+   THE CONSOLE'S OWN DEPTH
+
+   The signed-in half of the interface, which is a different palette and a
+   quieter kind of dimensional: illumination and elevation rather than solids
+   that turn. An operations console is read for an hour at a time.
+   ========================================================================= */
+
+/* The hero's aurora. Two slow washes drifting behind the title, on their own
+   layer so the grid texture the element already carries stays crisp. */
+@keyframes aurora-drift {
+  from { transform: translate3d(-3%, -2%, 0) scale(1); }
+  to   { transform: translate3d(4%, 3%, 0) scale(1.1); }
+}
+.hero::after {
+  content: "";
+  position: absolute; inset: -45% -12%; z-index: 0;
+  background:
+    radial-gradient(40% 58% at 20% 32%, var(--accent-soft), transparent 70%),
+    radial-gradient(36% 52% at 78% 70%, var(--accent-2-soft), transparent 72%);
+  animation: aurora-drift 19s var(--ease) infinite alternate;
+  pointer-events: none;
+}
+/* The hero's content sits above its own weather. */
+.hero > * { position: relative; z-index: 1; }
+
+/* A lit edge along the rail and under the bar - one hairline of accent that
+   says which way the light is coming from. */
+.sidebar::after {
+  content: "";
+  position: absolute; top: 0; right: -1px; bottom: 0; width: 1px;
+  background: linear-gradient(180deg,
+    var(--ring), transparent 38%, transparent 70%, var(--sheen));
+  pointer-events: none;
+}
+.topbar::after {
+  content: "";
+  position: absolute; left: 0; right: 0; bottom: -1px; height: 1px;
+  background: linear-gradient(90deg,
+    var(--ring), transparent 42%, transparent 72%, var(--accent-2-soft));
+  pointer-events: none;
+}
+
+/* The current view's marker glows, so the rail reads at a glance from across
+   a room. The marker itself is already there and already keyed off
+   aria-current, which is what keeps it honest. */
+.nav-item[aria-current="page"]::before { box-shadow: 0 0 12px var(--ring); }
+
+/* The quick actions get the same tilt the KPI modules have. Same perspective
+   container pattern, same single rotation, same switch-off below. */
+.quick-actions { perspective: 800px; }
+.quick { transform-style: preserve-3d; }
+.quick:hover { transform: translateY(-2px) rotateX(2.4deg); }
+.quick:hover .quick-mark { box-shadow: var(--glow-soft); }
+
+/* =========================================================================
+   THE GLASS
+
+   Three things make a translucent surface read as a PANE rather than as a
+   faded box, and all three are at its edges:
+
+     1. a highlight along the top lip, where light catches it;
+     2. a hairline around the whole pane, so it has a thickness;
+     3. a shadow underneath, so it is sitting above something.
+
+   Everything below is those three, applied to the surfaces that are chrome.
+   It is box-shadow rather than background-image on purpose: several of these
+   elements already carry a gradient or the engineering grid in their
+   background, and a second background-image would quietly replace it.
+   ========================================================================= */
+
+/* The edge, on every pane. One declaration, so a pane cannot be given two
+   of the three and look subtly wrong. */
+.panel, .card, .empty, .live-panel, .status-module, .model-card,
+.hero, .term-card, .telemetry {
+  box-shadow:
+    var(--shadow-sm),
+    inset 0 1px 0 var(--glass-hi),
+    inset 0 0 0 1px var(--glass-tint);
+}
+
+/* Raised further, because a dialog and the sign-in card are the only things
+   in the interface that sit ON TOP of everything else rather than within it. */
+dialog, .auth-card {
+  box-shadow:
+    var(--shadow-lift),
+    inset 0 1px 0 var(--glass-hi),
+    inset 0 0 0 1px var(--glass-tint);
+}
+
+/* Hover keeps the edge. Without repeating the insets here the highlight
+   would vanish the moment a pointer touched a panel, which is the sort of
+   flicker that reads as a rendering bug rather than as a hover state. */
+.panel:hover {
+  border-color: var(--border-strong);
+  box-shadow:
+    var(--shadow),
+    inset 0 1px 0 var(--glass-hi),
+    inset 0 0 0 1px var(--glass-tint);
+}
+.card:hover, .model-card:hover, .status-module:hover {
+  box-shadow:
+    var(--shadow),
+    inset 0 1px 0 var(--glass-hi),
+    inset 0 0 0 1px var(--glass-tint);
+}
+.cards .card:hover {
+  box-shadow:
+    var(--shadow-lift),
+    inset 0 1px 0 var(--glass-hi),
+    inset 0 0 0 1px var(--glass-tint);
+}
+
+/*
+  THE RAIL IS GLASS NOW, AND THE COMMENT IT USED TO CARRY WAS RIGHT.
+
+  It said: deliberately not glass, because the rail sits against the page
+  edge where there is nothing behind it to show through, and a blur there
+  would cost a composite layer on every scroll for no visible gain.
+
+  Both halves of that have changed. There IS something behind it - the ground
+  gained a second, drifting illumination layer below - and the rail no longer
+  scrolls, because it is a sticky full-height element that is painted once.
+  So the reasoning is reversed rather than ignored, which is the only honest
+  way to overturn a decision somebody wrote down.
+*/
+.sidebar {
+  backdrop-filter: blur(var(--blur)) saturate(120%);
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(120%);
+  box-shadow: inset -1px 0 0 var(--glass-tint);
+}
+
+/* The monitoring modules. A classroom panel is chrome around a camera, and
+   the camera itself is opaque - see .live-panel-stage, which keeps --bg-deep
+   precisely so a video frame is never composited through anything. */
+.live-panel {
+  backdrop-filter: blur(var(--blur)) saturate(116%);
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(116%);
+}
+
+/* The hero and the status modules: both are containers, and neither holds a
+   figure of its own. The hero's numbers are the KPI modules BELOW it. */
+.hero, .status-module {
+  backdrop-filter: blur(var(--blur)) saturate(118%);
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(118%);
+}
+
+/* A deeper blur behind a modal, so the page it covers reads as out of reach
+   rather than merely dimmed. */
+dialog::backdrop {
+  backdrop-filter: blur(7px) saturate(85%);
+  -webkit-backdrop-filter: blur(7px) saturate(85%);
+}
+
+/* =========================================================================
+   THE GROUND THE GLASS SHOWS
+
+   Glass over a flat colour is a slightly lighter flat colour. The panes need
+   something behind them with structure in it, which is what this layer is:
+   three soft lights on their own fixed plane, drifting slowly enough that it
+   is never the thing you notice.
+
+   On ::after rather than painted into ::before, so the two can be reasoned
+   about separately - ::before is the brand-corner wash that was always there
+   and prints must drop, and this is the material behind the glass.
+   ========================================================================= */
+
+@keyframes ground-drift {
+  from { transform: translate3d(-2%, -1%, 0) scale(1); }
+  to   { transform: translate3d(2%, 2%, 0) scale(1.08); }
+}
+
+body::after {
+  content: "";
+  position: fixed; inset: -25%; z-index: -2;
+  pointer-events: none;
+  background-image:
+    radial-gradient(26% 32% at 14% 22%, var(--accent-soft), transparent 68%),
+    radial-gradient(24% 28% at 86% 12%, var(--accent-2-soft), transparent 70%),
+    radial-gradient(30% 34% at 74% 88%, var(--accent-soft), transparent 72%);
+  /* Blurred so the three lights are a wash rather than three visible discs.
+     filter, not backdrop-filter: it blurs its own gradients and reads nothing
+     back off the page. */
+  filter: blur(42px);
+  animation: ground-drift 42s var(--ease) infinite alternate;
+}
+
+/* =========================================================================
+   SMALLER SURFACES
+
+   The controls, badges and chips. Same three edges, scaled down - a 24px
+   pill with a 1px highlight on it reads as machined; the same pill with a
+   full shadow reads as a button that lost its label.
+   ========================================================================= */
+
+.btn, .chip, .pill, .focus-chip, .session-flag, .theme-switch,
+.auth-switch, .mode-switch {
+  box-shadow: inset 0 1px 0 var(--glass-hi);
+}
+
+.btn-primary {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .22),
+    0 1px 2px rgba(0, 0, 0, .25);
+}
+.btn-primary:hover {
+  box-shadow:
+    var(--glow),
+    inset 0 1px 0 rgba(255, 255, 255, .28);
+}
+
+/* The rail's current view, lit from its own marker outwards. */
+.nav-item[aria-current="page"] {
+  box-shadow: inset 0 0 0 1px var(--glass-tint);
+}
+
+/* A table is NOT glass. Rows scroll under a sticky header and a translucent
+   row would show the row beneath it through its own figures, so the scroll
+   container keeps the one opaque surface in the interface. */
+.table-scroll { background: transparent; }
+.data-table tbody tr:hover, .mini-table tbody tr:hover {
+  box-shadow: inset 0 0 0 1px var(--glass-tint);
+}
+
+/* =========================================================================
+   THE STYLE PASS
+
+   Everything below is finish rather than structure: the treatments that make
+   the console look designed instead of assembled. It sits at the end of the
+   depth layer because it is the last word on appearance and the first thing
+   to switch off for print.
+   ========================================================================= */
+
+/* -- the display figures -------------------------------------------------
+
+   A KPI value is the one piece of text in the interface that is allowed to
+   be decorative, because it is a figure rather than a sentence: nobody reads
+   a column of them left to right.
+
+   The gradient runs through the TOP of the glyphs only - from --text to
+   --text, via nothing - so what it actually does is lighten the cap height
+   and leave the baseline grounded. A full-saturation gradient on a number
+   somebody has to read would be exactly the mistake rule 1 warns about. */
+.card .value, .metric-value, .live-value {
+  background: linear-gradient(176deg, var(--text), var(--text-muted) 140%);
+  -webkit-background-clip: text; background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+/* The fallback, and the one case the gradient must not apply: "No data" is
+   not a figure and must not be set like one. */
+@supports not ((background-clip: text) or (-webkit-background-clip: text)) {
+  .card .value, .metric-value, .live-value {
+    color: var(--text);
+    -webkit-text-fill-color: currentColor;
+  }
+}
+.card .value.nodata, .metric-value.nodata {
+  background: none;
+  color: var(--text-dim);
+  -webkit-text-fill-color: currentColor;
+}
+
+/* -- the primary panel ---------------------------------------------------
+
+   One panel per view is the one being watched. It already had a top rule;
+   this gives it the glass treatment the others get plus a wash that falls
+   away, so it reads as nearer the reader rather than merely outlined. */
+.panel-primary {
+  box-shadow:
+    var(--shadow),
+    inset 0 1px 0 var(--glass-hi),
+    inset 0 0 0 1px var(--glass-tint);
+}
+/* background-IMAGE, over the surface colour the panel already has.
+
+   An overlay pseudo-element was the first attempt and it is wrong here: with
+   inset 0 it sits above the panel's own content unless every child is raised
+   past it, and a bare text node cannot be raised. */
+.panel-primary {
+  background-image: linear-gradient(168deg, var(--accent-soft), transparent 58%);
+}
+
+/* -- the camera ----------------------------------------------------------
+
+   THE SCANLINE, which --scan was defined for and which nothing had drawn.
+
+   Two hairlines of accent across the top and bottom lip of the stage, and a
+   very faint horizontal rule over the frame itself. It is the one place in
+   the interface where a decoration is ABOUT the subject: a camera feed with
+   a scan over it reads as a machine looking at a room, which is what this
+   product does.
+
+   Deliberately weak. The frame is evidence and the operator is looking for
+   faces in it, so this must never be the brightest thing on the stage.
+
+   repeating-linear-gradient, not an image: there is no file to fetch, and a
+   test asserts the stylesheet loads none. */
+.live-panel-stage::after {
+  content: "";
+  position: absolute; inset: 0;
+  pointer-events: none;
+  background-image: repeating-linear-gradient(
+    180deg, var(--scan) 0 1px, transparent 1px 4px);
+  opacity: .5;
+}
+/* Only the panel stage. .classroom-stage spends both of its
+   pseudo-elements on the corner marks, and taking one back to draw a scan
+   over it would cost a framing mark to gain a texture. */
+.live-panel-stage {
+  box-shadow:
+    inset 0 1px 0 var(--glass-hi),
+    inset 0 -1px 0 var(--glass-tint);
+}
+
+/* -- status pills --------------------------------------------------------
+
+   A pill carries a symbol, a word and a hue - rule 1, unchanged. What this
+   adds is the glass: a pill is a small raised object, so it gets the same
+   top highlight every other raised object has.
+
+   NO backdrop-filter, and that was a correction rather than a choice. The
+   first version saturated what was behind a pill, which is a filter sitting
+   behind the pill's own word - the half of the glass rule that has to keep
+   its teeth, and the half a test now asserts positively. */
+.pill {
+  box-shadow:
+    inset 0 1px 0 var(--glass-hi),
+    0 1px 2px rgba(0, 0, 0, .18);
+}
+
+/* -- the rail ------------------------------------------------------------
+
+   The active marker, refined rather than animated.
+
+   Growing it into place was the first idea and it does not survive the
+   markup: the marker's ::before exists ONLY on the current item, so there is
+   nothing to transition from. Giving every nav item an invisible marker in
+   order to animate one of them is a lot of pseudo-elements for a 200ms
+   effect, so the marker is simply drawn better. */
+.nav-item[aria-current="page"]::before {
+  height: 1.3rem; margin-top: -.65rem;
+  background: linear-gradient(180deg, var(--accent), var(--accent-2));
+}
+
+/* The rail's own brand mark gets the accent bloom, since it is the one place
+   the product's colour is stated rather than used. */
+.brand-mark, .hero-mark, .quick-mark {
+  box-shadow:
+    var(--glow-soft),
+    inset 0 1px 0 rgba(255, 255, 255, .28);
+}
+
+/* -- the top bar ---------------------------------------------------------
+
+   Slightly more glass than a panel, because it is the only element that
+   content scrolls underneath - and a sharper edge underneath it, so the
+   boundary is a line rather than a fade. */
+.topbar {
+  backdrop-filter: blur(calc(var(--blur) * 1.3)) saturate(130%);
+  -webkit-backdrop-filter: blur(calc(var(--blur) * 1.3)) saturate(130%);
+  box-shadow: inset 0 1px 0 var(--glass-hi);
+}
+
+/* -- typography ----------------------------------------------------------
+
+   Optical sizing by hand: the larger a line is set, the tighter it wants to
+   be tracked, and the project's one heading rule applied the same -0.011em
+   to a 1.32rem h1 and a 0.9rem h3. */
+h1 { letter-spacing: -.021em; }
+h2 { letter-spacing: -.014em; }
+h3 { letter-spacing: -.006em; }
+
+/* An uppercase micro-label is the opposite case: it needs opening up, and it
+   already is. What it did not have was a weight that survived the glass
+   behind it. */
+.metric-label, .nav-group-label, .panel-eyebrow, .telemetry-key,
+.live-label, .status-name, .assistant-receipt-heading, .topbar-eyebrow {
+  text-shadow: 0 1px 0 rgba(0, 0, 0, .18);
+}
+
+/* -- empty states --------------------------------------------------------
+
+   An empty panel is a panel. It gets the glass and a dashed edge, so "there
+   is nothing here" looks deliberate rather than unfinished. */
+.empty {
+  border-style: dashed;
+  /* background-image, so the surface colour and the glass that goes with it
+     are not thrown away by a shorthand. */
+  background-image: linear-gradient(180deg, var(--glass-tint), transparent 40%);
+}
+
+/* ---------- responsive ---------- */
+
+/*
+  Desktop is the primary experience - this is an operations console and it is
+  used on a real screen. Below the rail's width it collapses to a drawer; below
+  that the layout stacks.
+*/
+@media (max-width: 1080px) {
+  .app-shell { grid-template-columns: minmax(0, 1fr); }
+
+  /* The gate stacks: stage above form, both centred. The stage stays because
+     at this width there is still room for it above the fold. */
+  .gate {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.4rem; max-width: 520px;
+    justify-items: center;
+  }
+  .gate-intro { justify-items: center; text-align: center; }
+  .gate-lede { margin-inline: auto; }
+  .gate-points { text-align: left; }
+  .gate-stage { min-height: 236px; }
+
+  /* The rail becomes a drawer: off-canvas, brought in by the top bar button,
+     and still a real <nav> in the document rather than a second copy. */
+  .sidebar {
+    position: fixed; top: 0; left: 0; z-index: 40;
+    width: min(282px, 84vw);
+    transform: translateX(-102%);
+    transition: transform var(--slow) var(--ease);
+    box-shadow: var(--shadow-lift);
+  }
+  .sidebar[data-open="true"] { transform: none; }
+
+  .sidebar-toggle { display: inline-flex; }
+
+  /* And the rail's own collapse control goes: at this width the rail is a
+     drawer, the collapsed rules are scoped above it, and a button that
+     narrows nothing is a button that teaches people not to trust the rail. */
+  .rail-collapse { display: none; }
+  .topbar { position: sticky; }
+  main { padding: 1rem; }
+}
+
+@media (max-width: 760px) {
+  /* Decoration goes before content does. The stage is aria-hidden and holds
+     nothing to read, so on a phone it leaves and the form gets the screen. */
+  .gate-stage { display: none; }
+  .gate-headline { font-size: 1.65rem; }
+
+  .topbar-inner { gap: .6rem; padding: .5rem .9rem; }
+  .topbar-actions { width: 100%; margin-left: 0; }
+  .account-who { text-align: left; }
+  .filters { width: 100%; }
+  .filters .field { flex: 1 1 140px; }
+  .panel-grid { grid-template-columns: minmax(0, 1fr); }
+  .hero-meta { margin-left: 0; width: 100%; }
+  .live-item { padding-left: 0; border-left: 0; }
+  .console { grid-template-columns: minmax(0, 1fr); }
+  /* Fewer columns, not smaller cameras. The cap is lowered and auto-fit
+     re-wraps; every active class still gets its own panel. */
+  .live-grid { --live-columns: 2; }
+  .console-side .cards {
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  }
+  .seat-grid { grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); }
+  .model-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 600px) {
+  /* A table stays a table and SCROLLS. The minimum width is on the table,
+     inside .table-scroll - never on the page, which is what causes the
+     horizontal overflow this rule exists to prevent. */
+  .data-table { min-width: 620px; }
+  .mini-table { min-width: 420px; }
+
+  html { font-size: 15px; }
+  main { padding: .8rem; }
+  .cards, .metric-grid { grid-template-columns: repeat(auto-fit, minmax(126px, 1fr)); }
+  .card .value, .metric-value { font-size: 1.28rem; }
+  .hero { padding: .85rem .9rem; }
+  .hero-title { font-size: 1rem; }
+  .panel { padding: .85rem .9rem; border-radius: var(--radius-sm); }
+  .dialog-body { padding: .9rem 1rem 1rem; }
+  .mode-switch { overflow-x: auto; flex-wrap: nowrap; }
+  .status-grid { grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); }
+  /* One classroom at a time on a phone, scrolled - never four unreadable
+     tiles. Every active session is still present in the document. */
+  .live-grid { --live-columns: 1; }
+  .live-panel-actions .btn { flex: 1 1 auto; justify-content: center; }
+  .timeline-row { grid-template-columns: minmax(0, 1fr); }
+  .bar-row { grid-template-columns: minmax(70px, 1fr) 1.6fr auto; }
+}
+
+/* ---------- motion, switched off ---------- */
+
+/*
+  Not damped and not shortened - OFF. People who set this usually set it
+  because motion makes them ill, and a 60ms animation is still an animation.
+
+  The live pulse goes too. It is the one piece of motion that carries meaning,
+  and the state it carries is also a word and a colour, so nothing is lost.
+*/
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* The dot keeps the colour its own rule gives it; this only stops the
+     ring from expanding. */
+  .live-dot { animation: none; }
+  .skeleton { animation: none; background-image: none; background: var(--surface-2); }
+
+  .view:not([hidden]) > .panel,
+  .view:not([hidden]) > .hero,
+  .view:not([hidden]) > .cards,
+  .view:not([hidden]) > .metric-grid { animation: none; }
+
+  .sidebar { transition: none; }
+
+  /* Every hover transform the depth layer adds. */
+  .panel:hover, .card:hover, .cards .card:hover, .btn:hover, .quick:hover,
+  .model-card:hover, .status-module:hover, .theme-switch button:hover,
+  .cards .card:hover .value {
+    transform: none;
+  }
+  .cards { perspective: none; }
+  .quick-actions { perspective: none; }
+
+  /*
+    The gate.
+
+    Switched off by name, every one of them, because a duration override alone
+    leaves an infinite animation running at 0.001ms forever. The cube and the
+    rings keep the tilt their static rules give them - a 3D object that does
+    not turn is still a 3D object - and the halo settles at one angle, which
+    is a static gradient edge.
+  */
+  .gate-cube, .gate-ring-a, .gate-ring-b, .gate-ring-c,
+  .auth-card::before,
+  .auth-screen:not([hidden]) .gate-stage,
+  .auth-screen:not([hidden]) .gate-intro,
+  .auth-screen:not([hidden]) .auth-card { animation: none; }
+
+  /* The pointer lean. app.js checks the same preference before it binds the
+     listener at all; this is the half that does not depend on JavaScript
+     having run. */
+  .auth-card { transform: none; }
+
+  /* The console: the ground behind the glass, the hero's drifting weather,
+     and the arrival. body::after is an infinite animation on a fixed
+     element, so a duration override alone would leave it running forever at
+     0.001ms - it goes off by name, exactly as body::before does. */
+  body::after { animation: none; }
+  .hero::after { animation: none; }
+  body.booting main,
+  body.booting .topbar,
+  body.booting .sidebar { animation: none; }
+}
+
+/* ---------- print ---------- */
+
+/*
+  A printed register is a document, not a console. The decoration comes off:
+  no glass, no shadow, no illumination, no chrome - and the tables stop
+  scrolling, because paper has no scrollbar.
+*/
+@media print {
+  body {
+    background: #fff; color: #000;
+    background-image: none;
+  }
+  /* Both ground layers, and every control a printed register has no use
+     for. A drifting illumination behind a translucent panel prints as a grey
+     smear across the figures somebody is trying to read. */
+  body::before { display: none; }
+  body::after { display: none; }
+
+  .sidebar, .tabs, .topbar, .theme-switch, .mode-switch, .filters,
+  .table-controls, .row-actions, .pager, .skip-link, .quick-actions,
+  .sidebar-toggle, .live-panel-actions, .focus-switcher,
+  .gate-stage, .auth-appearance {
+    display: none !important;
+  }
+
+  /* The illumination the depth layer draws with pseudo-elements. A drifting
+     wash behind a figure prints as a grey smear across it. */
+  .hero::after, .sidebar::after, .topbar::after,
+  .auth-card::before, .auth-card::after { display: none !important; }
+  .app-shell { display: block; }
+  main { max-width: none; padding: 0; }
+
+  /* Chrome loses its glass. Only the chrome selectors appear here, so the
+     glass contract reads the same on paper as on screen. */
+  .panel, .card, .empty, dialog, .sidebar, .hero, .live-panel,
+  .status-module {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  /* And the edges that made them panes. An inset highlight prints as a pale
+     line through the top of every box. */
+  .panel, .card, .empty, .live-panel, .status-module, .model-card,
+  .hero, .term-card, .telemetry, dialog, .btn, .pill, .chip {
+    box-shadow: none !important;
+  }
+
+  /* Everything with an edge loses its shadow and gets a printable border. */
+  .panel, .card, .empty, .seat, .model-card, .status-module, .telemetry,
+  dialog {
+    box-shadow: none !important;
+    border: 1px solid #999;
+    background: #fff;
+  }
+  .hero { background: #fff; border: 1px solid #999; box-shadow: none; }
+  .table-scroll { overflow: visible; }
+  .data-table th { position: static; background: #eee; color: #000; }
+  .pill { border: 1px solid #666; color: #000; background: #fff; }
+  a[href]::after { content: ""; }
+}
